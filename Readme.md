@@ -84,3 +84,11 @@ you start as a single neolithic village consisting of a few villagers
 #### children
 - children cannot be assigned roles until they are 10 (increasing with each epoch)
 - births will be calculated based on population demographics, food supply and environmental factors, similar to deaths. this could get very dark. could get quite creative with the death flavour text 
+
+## credits
+
+- Graphics API: [ebiten](https://ebiten.org) by hajimehoshi
+
+### fonts
+- [Volter (Goldfish)](https://www.dafont.com/volter-goldfish.font) by cocoFabien
+- [Alagard](https://www.dafont.com/alagard.font) by Hewett Tsoi

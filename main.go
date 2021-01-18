@@ -3,10 +3,14 @@ package main
 import (
 	"fmt"
 	"image/color"
+	"io/ioutil"
 	"log"
 
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 	"github.com/hajimehoshi/ebiten/inpututil"
+	"github.com/hajimehoshi/ebiten/text"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 
 	_ "image/png"
 
@@ -74,10 +78,23 @@ const (
 )
 
 var (
+	epochs []string = []string{
+		"Neolithic Age",
+		"Roman Age",
+		"Classical Age",
+		"Age of Steam",
+		"Modern Age",
+		"Transhuman Age",
+		"Apocalyptic Age",
+	}
 	lastFrame    int = 0
 	ticks        int = 0
+	year         int = 1
+	epoch        int = 0
 	world        World
 	civilization Civilization
+	fontTitle    font.Face
+	fontDetail   font.Face
 	grass        TileSprite
 	water        TileSprite
 	village      Animated
@@ -354,6 +371,12 @@ func DrawUi(screen *ebiten.Image) {
 	op.ColorM.Scale(1, 1, 1, 1)
 	op.GeoM.Translate(16, 200)
 	screen.DrawImage(btnEndTurn, op)
+
+	// the font should totally upgrade with each age
+	text.Draw(screen, epochs[epoch], fontTitle, 8, 16, color.White)
+
+	// smaller font for more detailed information
+	text.Draw(screen, fmt.Sprintf("Citizens: %d/%d", len(civilization.citizens), civilization.max), fontDetail, 8, 30, color.White)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -364,13 +387,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	DrawUi(screen)
 
 	// TODO if debug
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Citizens: %d/%d", len(civilization.citizens), civilization.max), 16, 40)
 	// TODO don't calculate mouse pos on the draw call. this is for debugging only
 	mx, my := ebiten.CursorPosition()
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse pos: %d,%d", mx, my), 16, 60)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("TPS: %f", ebiten.CurrentTPS()), 16, 80)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse on tile: %d, %d", mtx, mty), 16, 100)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Cursor on tile: %d, %d", ctx, cty), 16, 120)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse on tile: %d, %d", mtx, mty), 16, 80)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Cursor on tile: %d, %d", ctx, cty), 16, 100)
 }
 
 func (g *Game) Layout(outsideWith, outsideHeight int) (screenWidth, screenHeight int) {
@@ -522,6 +543,59 @@ func LoadAnimatedSprite(path string, name string, frames int) Animated {
 	}
 }
 
+func LoadFonts() {
+
+	const dpi = 72
+
+	fopsTitle := &opentype.FaceOptions{
+		Size:    16,
+		DPI:     dpi,
+		Hinting: font.HintingNone,
+	}
+
+	fopsDetail := &opentype.FaceOptions{
+		Size:    9,
+		DPI:     dpi,
+		Hinting: font.HintingNone,
+	}
+
+	// load title font
+	data, err := ioutil.ReadFile("font/alagard.ttf")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ttf, err := opentype.Parse(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fontTitle, err = opentype.NewFace(ttf, fopsTitle)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// load detail font
+	data, err = ioutil.ReadFile("font/Volter__28Goldfish_29.ttf")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ttf, err = opentype.Parse(data)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fontDetail, err = opentype.NewFace(ttf, fopsDetail)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+}
+
 func LoadSprites() {
 
 	// see loading github.com/rakyll/statik in NewImageFromFile documentation
@@ -546,6 +620,7 @@ func LoadSprites() {
 }
 
 func Init() {
+	LoadFonts()
 	LoadSprites()
 	world = CreateWorld()
 	civilization = CreateCivilization()
@@ -558,7 +633,8 @@ func main() {
 
 	// do this with a function. it's to make the screen size fit the map (assuming 8x8) like minesweeper
 	ebiten.SetWindowSize(64*8*2, 32*8*2)
-	ebiten.SetWindowTitle("title")
+	ebiten.SetWindowTitle("Kingdom")
+
 	game := &Game{}
 	if err := ebiten.RunGame(game); err != nil {
 		panic(err)

@@ -53,9 +53,12 @@ type World struct {
 	yOffset int
 }
 
+// TODO consider polymorphism for buildings
 type Thing struct {
-	animated *Animated
-	nothing  bool
+	progress  float64
+	completed bool
+	animated  *Animated
+	nothing   bool
 }
 
 type Civilization struct {
@@ -79,17 +82,37 @@ var (
 	water        TileSprite
 	village      Animated
 	house        Animated
+	north        *ebiten.Image
 	btnEndTurn   *ebiten.Image
 	// ctx and cty are the coordinate of the tile that the cursor is on
-	ctx int = 0
-	cty int = 0
-	mtx int = -1
-	mty int = -1
+	ctx                 int  = 0
+	cty                 int  = 0
+	mtx                 int  = -1
+	mty                 int  = -1
+	validMouseSelection bool = false
 	// nothing is used to initialise the 2D things array
 	nothing Thing = Thing{
 		nothing: true,
 	}
 )
+
+// TODO this should return some kind of tile build status object, e.g has building, can build on, etc
+func IsTileSelectionValid() bool {
+
+	// TODO check this works for a non-square world
+	return world.things[mtx][mty].completed ||
+		(mtx > 0 && world.things[mtx-1][mty].completed) ||
+		(mty > 0 && world.things[mtx][mty-1].completed) ||
+		(mtx < len(world.things)-1 && world.things[mtx+1][mty].completed) ||
+		(mtx < len(world.things) && mty < len(world.things[mtx])-1 && world.things[mtx][mty+1].completed)
+}
+
+// ResetFrameState is a handy function that will reset any variables that should not persist between updates
+func ResetFrameState() {
+	validMouseSelection = false
+	mtx = -1
+	mty = -1
+}
 
 func UpdateDrawLocations() {
 
@@ -121,9 +144,11 @@ func UpdateDrawLocations() {
 				// this matches a box in the centre of the sprite. needs to actually fit the iso
 				// if you treat what the player sees as a rectangle, it won't work correctly
 				if (tx+16 < mxf) && (mxf < tx+48) && (ty+8 < myf) && (myf < ty+24) {
+
 					world.tiles[x][y].selected = true
 					mtx, mty = x, y
 					mouseFound = true
+					validMouseSelection = IsTileSelectionValid()
 				} else {
 					world.tiles[x][y].selected = false
 				}
@@ -134,15 +159,20 @@ func UpdateDrawLocations() {
 	}
 }
 
+// UpdateInputs calls appropriate functions when inputs detected
 func UpdateInputs() {
 
+	// TODO only on mouse release, so a user can cancel by moving the cursor before they release click
+	//  see IsMouseButtonJustReleased
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 
-		if world.tiles[mtx][mty].category == TGrass {
+		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
 
-			world.things[mtx][mty] = Thing{
-				animated: &village,
-				nothing:  false,
+			if world.things[mtx][mty].nothing {
+				world.things[mtx][mty] = Thing{
+					animated: &village,
+					nothing:  false,
+				}
 			}
 		}
 
@@ -152,11 +182,16 @@ func UpdateInputs() {
 	}
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
-		if world.tiles[mtx][mty].category == TGrass {
 
-			world.things[mtx][mty] = Thing{
-				animated: &house,
-				nothing:  false,
+		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
+
+			if world.things[mtx][mty].nothing {
+				world.things[mtx][mty] = Thing{
+					progress:  0,
+					completed: false,
+					animated:  &house,
+					nothing:   false,
+				}
 			}
 		}
 	}
@@ -191,6 +226,8 @@ func UpdateInputs() {
 }
 
 func (g *Game) Update() error {
+
+	ResetFrameState()
 
 	// this also finds which tile the mouse is on
 	UpdateDrawLocations()
@@ -230,6 +267,7 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 				if x == ctx && y == cty {
 					world.tiles[x][y].op.ColorM.Scale(0.6, 1, 0.6, 1)
 				}
+
 				screen.DrawImage(water.flat, world.tiles[x][y].op)
 
 				// if we're at a map edge, also draw the edge tiles
@@ -243,29 +281,40 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 
 				// reset the color scaling in case we changed it
 				world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
+
+			}
+
+			// draw north arrow. for debugging only atm
+			if x == 0 {
+				screen.DrawImage(north, world.tiles[x][y].op)
 			}
 		}
 	}
 
-	// draw grass layer
+	// TODO dedupe functionality between these two loops
+	// draw grass layer // why isn't this i nthe above block?
 	for x := 0; x < len(world.tiles); x++ {
 		for y := 0; y < len(world.tiles[x]); y++ {
 			if world.tiles[x][y].category == TGrass {
+
+				// colour tile differently based on selection
 				if world.tiles[x][y].selected {
-					world.tiles[x][y].op.ColorM.Scale(1, 0.6, 0.6, 1)
+					if validMouseSelection {
+						world.tiles[x][y].op.ColorM.Scale(0.6, 1, 0.6, 1)
+					} else {
+						world.tiles[x][y].op.ColorM.Scale(1, 0.6, 0.6, 1)
+					}
 				}
 
 				screen.DrawImage(grass.flat, world.tiles[x][y].op)
 
 				// if the west adjacent tile is lower, draw the west side
-				// need to check array bounds
-				if world.tiles[x][y-1].category < world.tiles[x][y].category {
+				if y == 0 || (world.tiles[x][y-1].category < world.tiles[x][y].category) {
 					screen.DrawImage(grass.west, world.tiles[x][y].op)
 				}
 
 				// if the south adjacent tile is lower, draw the south side
-				// need to check array bounds
-				if world.tiles[x+1][y].category < world.tiles[x][y].category {
+				if x < len(world.tiles) || (world.tiles[x+1][y].category < world.tiles[x][y].category) {
 					screen.DrawImage(grass.south, world.tiles[x][y].op)
 				}
 
@@ -279,7 +328,16 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 	for x := 0; x < len(world.things); x++ {
 		for y := 0; y < len(world.things[x]); y++ {
 			if !world.things[x][y].nothing {
-				screen.DrawImage(world.things[x][y].animated.sprites[world.things[x][y].animated.frame], world.tiles[x][y].op)
+				// constructions in progress will be transparent, with their opacity increasing as they near construction
+				if !world.things[x][y].completed {
+					// do not animate things under construction as it more clearly indicates that it's not in operation
+					world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 0.4)
+					screen.DrawImage(world.things[x][y].animated.sprites[0], world.tiles[x][y].op)
+				} else {
+					screen.DrawImage(world.things[x][y].animated.sprites[world.things[x][y].animated.frame], world.tiles[x][y].op)
+				}
+				// reset scale in case we changed it
+				world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
 			}
 		}
 	}
@@ -334,10 +392,22 @@ func CreateSelectedTile(category int) Tile {
 	}
 }
 
-func CreateWorld() World {
+func GrassWorldTiles() [][]Tile {
+	return [][]Tile{
+		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
+		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
+		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
+		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
+		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
+		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
+		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
+		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
+	}
+}
 
-	// TODO make sure cardinal directions are easy to spot
-	tiles := [][]Tile{
+// IslandWorldTiles is Kailynn's island
+func IslandWorldTiles() [][]Tile {
+	return [][]Tile{
 		{CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater)},
 		{CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater)},
 		{CreateTile(TWater), CreateTile(TWater), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TWater), CreateTile(TWater)},
@@ -347,6 +417,12 @@ func CreateWorld() World {
 		{CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater)},
 		{CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater)},
 	}
+}
+
+func CreateWorld() World {
+
+	// TODO make sure cardinal directions are easy to spot
+	tiles := IslandWorldTiles()
 
 	w := World{
 		tiles: tiles,
@@ -354,6 +430,19 @@ func CreateWorld() World {
 
 	w.CreateThings()
 	return w
+}
+
+func AddDebugThings(t [][]Thing) {
+	t[7][7] = Thing{
+		completed: true,
+		animated:  &village,
+		nothing:   false,
+	}
+	t[0][0] = Thing{
+		completed: true,
+		animated:  &village,
+		nothing:   false,
+	}
 }
 
 // CreateThings basically just initialises an empty 2D array
@@ -369,6 +458,14 @@ func (w *World) CreateThings() {
 		t = append(t, txa)
 	}
 
+	// spawn village in the middle(ish) of the map
+	t[3][4] = Thing{
+		completed: true,
+		animated:  &village,
+		nothing:   false,
+	}
+
+	//AddDebugThings(t)
 	w.things = t
 }
 
@@ -435,6 +532,13 @@ func LoadSprites() {
 	house = LoadAnimatedSprite("img/sprites/buildings", "house", 2)
 
 	var err error
+
+	// load north sprite
+	north, _, err = ebitenutil.NewImageFromFile("img/tiles/north.png")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	btnEndTurn, _, err = ebitenutil.NewImageFromFile("img/ui/btn_end_turn.png")
 	if err != nil {
 		log.Fatal(err)

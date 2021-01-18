@@ -413,33 +413,6 @@ func CreateSelectedTile(category int) Tile {
 	}
 }
 
-func GrassWorldTiles() [][]Tile {
-	return [][]Tile{
-		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
-		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
-		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
-		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
-		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
-		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
-		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
-		{CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass)},
-	}
-}
-
-// IslandWorldTiles is Kailynn's island
-func IslandWorldTiles() [][]Tile {
-	return [][]Tile{
-		{CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater)},
-		{CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater)},
-		{CreateTile(TWater), CreateTile(TWater), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TWater), CreateTile(TWater)},
-		{CreateTile(TWater), CreateTile(TWater), CreateTile(TGrass), CreateTile(TWater), CreateTile(TGrass), CreateTile(TWater), CreateTile(TGrass), CreateTile(TWater)},
-		{CreateTile(TWater), CreateTile(TWater), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TWater)},
-		{CreateTile(TWater), CreateTile(TWater), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TWater), CreateTile(TGrass), CreateTile(TWater), CreateTile(TWater)},
-		{CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TGrass), CreateTile(TGrass), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater)},
-		{CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater), CreateTile(TWater)},
-	}
-}
-
 func CreateWorld() World {
 
 	// TODO make sure cardinal directions are easy to spot

@@ -71,6 +71,8 @@ type Civilization struct {
 }
 
 const (
+	WWidth     = 1024
+	WHeight    = 600
 	TWater     = 0
 	TGrass     = 1
 	TileWidth  = 64
@@ -87,6 +89,8 @@ var (
 		"Transhuman Age",
 		"Apocalyptic Age",
 	}
+	sHeight      int
+	sWidth       int
 	lastFrame    int = 0
 	ticks        int = 0
 	year         int = 1
@@ -135,7 +139,7 @@ func UpdateDrawLocations() {
 
 	// north will be top left
 	xOffset := 0
-	yOffset := 3*32 + 16
+	yOffset := 120
 	mx, my := ebiten.CursorPosition()
 	mxf, myf := float64(mx), float64(my)
 	mouseFound := false
@@ -394,9 +398,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Cursor on tile: %d, %d", ctx, cty), 16, 100)
 }
 
-func (g *Game) Layout(outsideWith, outsideHeight int) (screenWidth, screenHeight int) {
-	return 64 * 8, 32 * 8
-	//return int(math.Floor(float64(outsideWith / 2))), int(math.Floor(float64(outsideHeight / 2)))
+func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
+	sWidth = outsideWidth / 2
+	sHeight = outsideHeight / 2
+	return sWidth, sHeight
 }
 
 func CreateTile(category int) Tile {
@@ -605,7 +610,7 @@ func main() {
 	Init()
 
 	// do this with a function. it's to make the screen size fit the map (assuming 8x8) like minesweeper
-	ebiten.SetWindowSize(64*8*2, 32*8*2)
+	ebiten.SetWindowSize(WWidth, WHeight)
 	ebiten.SetWindowTitle("Kingdom")
 
 	game := &Game{}

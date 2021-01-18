@@ -22,6 +22,13 @@ you start as a single neolithic village consisting of a few villagers
 - in the "move phase" you place or destroy buildings, make decisions about the economy of the next year, decide research, allocate resources, roles etc
 - every turn is one year
 - game loop should evaluate negative factors first to minimise cheesing
+- on the world map, each tile is a region or city
+- each region or city consists of another 8x8 tile grid
+	- movement within a region is free
+	- before trains, movement between regions takes a turn
+	- construction can only happen on neighbouring tiles
+	- a settlement must be established in a neighbouring tile in order to move there
+	- once trains have been researched, movement between regions is free
 
 ### ages
 
@@ -37,32 +44,30 @@ you start as a single neolithic village consisting of a few villagers
 - available once writing has been discovered. allows for research allocation
 - monoliths no longer spawn
 
-### roman age
+#### roman age
 - available once ???
 
-### classical age
+#### classical age
 - available once ???
 
-### age of steam
+#### age of steam
 - available once ???
 
-### atomic age
+#### atomic age
 - available once ???
 - there are further ages but game _could_ be "won" at this point
 - global annihilation risk is now factored into 
 
-### computer age
+#### computer age
 - available once atom bomb and semiconductors have been researched
 - researching the atom bomb adds a thermonuclear annihilation modifier to the death chance for all citizens
 
-### modern age
+#### modern age
 - available once ???
 - representative of present day
 
-### transhuman age
+#### transhuman age
 - available once ???
-
-### 
 
 ### construction
 - construction takes one year minimum (or can be sped up by assigning more villagers). concurrent projects will affect the construction time

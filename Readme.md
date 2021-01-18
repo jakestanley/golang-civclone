@@ -13,9 +13,9 @@ i want games to be short, like playable within a lunch time and for now it's jus
 
 you start as a single neolithic village consisting of a few villagers
 
-## goal
+## win conditions
 
-you have to build a rocket to go to space
+- launch a supership to colonise distant worlds
 
 ## mechanics
 

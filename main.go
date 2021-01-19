@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"io/ioutil"
 	"log"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 	"github.com/hajimehoshi/ebiten/inpututil"
@@ -35,6 +36,13 @@ func (a *Animated) Animate() {
 	}
 }
 
+type UiSprite struct {
+	left *ebiten.Image
+	// middle should ideally be one pixel wide for scaling
+	middle *ebiten.Image
+	right  *ebiten.Image
+}
+
 type TileSprite struct {
 	flat   *ebiten.Image
 	south  *ebiten.Image
@@ -47,6 +55,10 @@ type Tile struct {
 	building int
 	selected bool
 	op       *ebiten.DrawImageOptions
+}
+
+type Settlement struct {
+	citizens []*Citizen
 }
 
 type World struct {
@@ -71,12 +83,13 @@ type Civilization struct {
 }
 
 const (
-	WWidth     = 1024
-	WHeight    = 600
-	TWater     = 0
-	TGrass     = 1
-	TileWidth  = 64
-	TileHeight = 32
+	WWidth                    = 1024
+	WHeight                   = 600
+	TWater                    = 0
+	TGrass                    = 1
+	TileWidth                 = 64
+	TileHeight                = 32
+	SettlementCapacityVillage = 10
 )
 
 var (
@@ -104,7 +117,7 @@ var (
 	village      Animated
 	house        Animated
 	north        *ebiten.Image
-	btnEndTurn   *ebiten.Image
+	btn          UiSprite
 	// ctx and cty are the coordinate of the tile that the cursor is on
 	ctx                 int  = 0
 	cty                 int  = 0
@@ -255,6 +268,8 @@ func (g *Game) Update() error {
 
 	UpdateInputs()
 
+	// TODO UpdateUi
+
 	// TODO delta
 	// if the game is running at half speed, the delta should be 2
 	// if the game is running at normal speed, the delta should be 1 etc
@@ -369,18 +384,42 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 	// ebitenutil.DrawRect(screen, float64(mx-32), float64(my-16), 64, 32, color.Opaque)
 }
 
-func DrawUi(screen *ebiten.Image) {
+// DrawButton handles text and button sizing and positioning
+// TODO button state variable
+func DrawButton(screen *ebiten.Image, str string, x, y int) {
+
+	strRect := text.BoundString(fontDetail, str)
+	strWidth := strRect.Size().X
 
 	op := &ebiten.DrawImageOptions{}
-	op.ColorM.Scale(1, 1, 1, 1)
-	op.GeoM.Translate(16, 200)
-	screen.DrawImage(btnEndTurn, op)
+	op.GeoM.Translate(float64(x), float64(y))
+	screen.DrawImage(btn.left, op)
+	w, _ := btn.left.Size()
+
+	op = &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(float64(strWidth), 1)
+	op.GeoM.Translate(float64(x+w), float64(y))
+	screen.DrawImage(btn.middle, op)
+
+	op = &ebiten.DrawImageOptions{}
+	bx := x + w + strWidth
+	op.GeoM.Translate(float64(bx), float64(y))
+	screen.DrawImage(btn.right, op)
+
+	// draw button text
+	text.Draw(screen, str, fontDetail, x+w, y+12, color.White)
+}
+
+func DrawUi(screen *ebiten.Image) {
 
 	// the font should totally upgrade with each age
 	text.Draw(screen, epochs[epoch], fontTitle, 8, 16, color.White)
 
 	// smaller font for more detailed information
 	text.Draw(screen, fmt.Sprintf("Citizens: %d/%d", len(civilization.citizens), civilization.max), fontDetail, 8, 30, color.White)
+
+	DrawButton(screen, "End turn", 16, 200)
+	DrawButton(screen, "BALLS BALLS BALLS", 16, 240)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -444,6 +483,20 @@ func AddDebugThings(t [][]Thing) {
 	}
 }
 
+func CreateSpawnSettlement() Thing {
+
+	c := []Citizen{}
+	for i := 0; i < int(math.Floor(float64(SettlementCapacityVillage))); i++ {
+		c = append(c, Citizen{age: 18})
+	}
+
+	return Thing{
+		completed: true,
+		animated:  &village,
+		nothing:   false,
+	}
+}
+
 // CreateThings basically just initialises an empty 2D array
 func (w *World) CreateThings() {
 
@@ -458,11 +511,7 @@ func (w *World) CreateThings() {
 	}
 
 	// spawn village in the middle(ish) of the map
-	t[3][4] = Thing{
-		completed: true,
-		animated:  &village,
-		nothing:   false,
-	}
+	t[3][4] = CreateSpawnSettlement()
 
 	//AddDebugThings(t)
 	w.things = t
@@ -478,6 +527,31 @@ func CreateCivilization() Civilization {
 	return Civilization{
 		citizens: citizens,
 		max:      0,
+	}
+}
+
+// LoadUISprite assumes that the path contains left.png, middle.png and right.png
+func LoadUISprite(path string) UiSprite {
+
+	left, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/left.png", path))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	middle, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/middle.png", path))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	right, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/right.png", path))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return UiSprite{
+		left:   left,
+		middle: middle,
+		right:  right,
 	}
 }
 
@@ -591,10 +665,7 @@ func LoadSprites() {
 		log.Fatal(err)
 	}
 
-	btnEndTurn, _, err = ebitenutil.NewImageFromFile("img/ui/btn_end_turn.png")
-	if err != nil {
-		log.Fatal(err)
-	}
+	btn = LoadUISprite("img/ui/button")
 }
 
 func Init() {

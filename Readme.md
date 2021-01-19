@@ -59,8 +59,8 @@ you start as a single neolithic village consisting of a few villagers
 - global annihilation risk is now factored into 
 
 #### computer age
-- available once atom bomb and semiconductors have been researched
-- researching the atom bomb adds a thermonuclear annihilation modifier to the death chance for all citizens
+- available once nuclear power and semiconductors have been researched
+- researching nuclear power adds a meltdown annihilation modifier to the death chance for all citizens in a region
 
 #### modern age
 - available once ???

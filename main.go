@@ -91,12 +91,19 @@ type Civilization struct {
 }
 
 const (
-	WWidth                    = 1024
-	WHeight                   = 600
-	TWater                    = 0
-	TGrass                    = 1
-	TileWidth                 = 64
-	TileHeight                = 32
+	// WWidth default window width
+	WWidth = 1024
+	// WHeight default window height
+	WHeight = 600
+	// TWater water tile type index
+	TWater = 0
+	// TGrass grass tile type index
+	TGrass = 1
+	// TileWidth width of tiles in pixels (unscaled)
+	TileWidth = 64
+	// TileHeight height of tiles in pixels (unscaled)
+	TileHeight = 32
+	// SettlementCapacityVillage max citizens a settlement can contain
 	SettlementCapacityVillage = 10
 )
 
@@ -129,6 +136,8 @@ var (
 	// ctx and cty are the coordinate of the tile that the cursor is on
 	ctx                 int  = 0
 	cty                 int  = 0
+	mx                  int  = 0
+	my                  int  = 0
 	mtx                 int  = -1
 	mty                 int  = -1
 	validMouseSelection bool = false
@@ -162,7 +171,8 @@ func UpdateDrawLocations() {
 	// north will be top left
 	xOffset := 0
 	yOffset := 120
-	mx, my := ebiten.CursorPosition()
+
+	// mouse position must have been updated by now
 	mxf, myf := float64(mx), float64(my)
 	mouseFound := false
 
@@ -186,6 +196,7 @@ func UpdateDrawLocations() {
 			if !mouseFound {
 				// this matches a box in the centre of the sprite. needs to actually fit the iso
 				// if you treat what the player sees as a rectangle, it won't work correctly
+				// can use rect and Point::in for this I think
 				if (tx+16 < mxf) && (mxf < tx+48) && (ty+8 < myf) && (myf < ty+24) {
 
 					world.tiles[x][y].selected = true
@@ -207,6 +218,24 @@ func UpdateInputs() {
 
 	// TODO only on mouse release, so a user can cancel by moving the cursor before they release click
 	//  see IsMouseButtonJustReleased
+
+	for i := 0; i < len(buttons); i++ {
+		button := &buttons[i]
+
+		point := image.Point{
+			X: mx,
+			Y: my,
+		}
+
+		// TODO remove if statement break if true (but not right now as still under development)
+		// button.hover = point.In(button.bounds)
+		if point.In(button.bounds) {
+			button.hover = true
+		} else {
+			button.hover = false
+		}
+	}
+
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 
 		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
@@ -271,6 +300,9 @@ func UpdateInputs() {
 func (g *Game) Update() error {
 
 	ResetFrameState()
+
+	// TODO bind to window. ebiten seems to track outside of the window too
+	mx, my = ebiten.CursorPosition()
 
 	// this also finds which tile the mouse is on
 	UpdateDrawLocations()
@@ -386,7 +418,6 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 			}
 		}
 	}
-	//screen.DrawImage(village.sprites[village.frame], &ebiten.DrawImageOptions{})
 
 	// debugging only
 	// mx, my := ebiten.CursorPosition()
@@ -414,17 +445,27 @@ func (b *Button) DrawButton(screen *ebiten.Image) {
 	strRect := text.BoundString(fontDetail, b.content)
 	strWidth := strRect.Size().X
 
+	// TODO reuse this so we don't have to set scale multiple times
 	op := &ebiten.DrawImageOptions{}
+	if b.hover {
+		op.ColorM.Scale(0.8, 0.8, 0.8, 1)
+	}
 	op.GeoM.Translate(float64(b.x), float64(b.y))
 	screen.DrawImage(btn.left, op)
 	w, _ := btn.left.Size()
 
 	op = &ebiten.DrawImageOptions{}
+	if b.hover {
+		op.ColorM.Scale(0.8, 0.8, 0.8, 1)
+	}
 	op.GeoM.Scale(float64(strWidth), 1)
 	op.GeoM.Translate(float64(b.x+w), float64(b.y))
 	screen.DrawImage(btn.middle, op)
 
 	op = &ebiten.DrawImageOptions{}
+	if b.hover {
+		op.ColorM.Scale(0.8, 0.8, 0.8, 1)
+	}
 	bx := b.x + w + strWidth
 	op.GeoM.Translate(float64(bx), float64(b.y))
 	screen.DrawImage(btn.right, op)

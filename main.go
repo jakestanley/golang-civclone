@@ -106,7 +106,8 @@ const (
 	// SettlementCapacityVillage max citizens a settlement can contain
 	SettlementCapacityVillage = 10
 	// BtnEndTurn is the button map key for ending a turn
-	BtnEndTurn = "END_TURN"
+	BtnEndTurn       = "END_TURN"
+	BtnShowBuildings = "SHOW_BUILDINGS"
 )
 
 var (
@@ -449,7 +450,7 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 // DrawButton handles text and button sizing and positioning
 // TODO button state variable
 
-func CreateButton(img *UiSprite, str string, x, y int) *Button {
+func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 
 	b := Button{
 		content: str,
@@ -459,8 +460,11 @@ func CreateButton(img *UiSprite, str string, x, y int) *Button {
 		hover:   false,
 	}
 
+	// TODO calculate the text padding/button side size instead of using a magic number
+	w := text.BoundString(fontDetail, str).Dx() + 8
+
 	AllButtons = append(AllButtons, &b)
-	return &b
+	return &b, w
 }
 
 func (b *Button) DrawButton(screen *ebiten.Image) {
@@ -638,10 +642,18 @@ func CreateUi() {
 	SButtons = make(map[string]*Button)
 
 	// "static" button
-	SButtons[BtnEndTurn] = CreateButton(&btn, "End turn", 16, 200)
-
+	var bw int
+	bx := 8
+	// this won't work as sHeight hasn't been set yet. it's set when the game is run,
+	// so you may have to conditionally run Init() at the top of the update function
+	// using the expected values for now
+	by := (WHeight / 2) - 24
+	SButtons[BtnEndTurn], bw = CreateButton(&btn, "End turn", bx, by)
+	bx += bw
+	SButtons[BtnShowBuildings], bw = CreateButton(&btn, "Buildings", bx, by)
+	bx += bw
 	// "anonymous" button
-	CreateButton(&btn, "BALLS BALLS BALLS", 16, 240)
+	CreateButton(&btn, "BALLS BALLS BALLS", bx, by)
 }
 
 // LoadUISprite assumes that the path contains left.png, middle.png and right.png

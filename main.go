@@ -105,6 +105,8 @@ const (
 	TileHeight = 32
 	// SettlementCapacityVillage max citizens a settlement can contain
 	SettlementCapacityVillage = 10
+	// BtnEndTurn is the button map key for ending a turn
+	BtnEndTurn = "END_TURN"
 )
 
 var (
@@ -145,7 +147,15 @@ var (
 	nothing Thing = Thing{
 		nothing: true,
 	}
-	buttons []Button
+
+	// AllButtons is the master list of buttons. Used by renderer and mouse picker
+	AllButtons []*Button
+
+	// SButtons "static buttons", a map of buttons usually defined once and part of the main UI
+	SButtons map[string]*Button
+
+	// AButtons "anonymous buttons", array of buttons usually created on the fly and handled differently
+	AButtons []*Button
 )
 
 // TODO this should return some kind of tile build status object, e.g has building, can build on, etc
@@ -218,9 +228,8 @@ func UpdateInputs() {
 
 	// TODO only on mouse release, so a user can cancel by moving the cursor before they release click
 	//  see IsMouseButtonJustReleased
-
-	for i := 0; i < len(buttons); i++ {
-		button := &buttons[i]
+	for i := 0; i < len(AllButtons); i++ {
+		button := AllButtons[i]
 
 		point := image.Point{
 			X: mx,
@@ -297,6 +306,16 @@ func UpdateInputs() {
 	}
 }
 
+func HandleTurnEnd() {
+
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		if SButtons[BtnEndTurn].hover {
+			epoch++
+		}
+	}
+	return
+}
+
 func (g *Game) Update() error {
 
 	ResetFrameState()
@@ -308,6 +327,9 @@ func (g *Game) Update() error {
 	UpdateDrawLocations()
 
 	UpdateInputs()
+
+	// we definitely shouldn't accept any user input after this until the next loop
+	HandleTurnEnd()
 
 	// TODO UpdateUi
 
@@ -427,15 +449,18 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 // DrawButton handles text and button sizing and positioning
 // TODO button state variable
 
-func CreateButton(img *UiSprite, str string, x, y int) Button {
+func CreateButton(img *UiSprite, str string, x, y int) *Button {
 
-	return Button{
+	b := Button{
 		content: str,
 		x:       x,
 		y:       y,
 		img:     img,
 		hover:   false,
 	}
+
+	AllButtons = append(AllButtons, &b)
+	return &b
 }
 
 func (b *Button) DrawButton(screen *ebiten.Image) {
@@ -486,6 +511,7 @@ func (b *Button) DrawButton(screen *ebiten.Image) {
 	}
 }
 
+// TODO message display
 func DrawUi(screen *ebiten.Image) {
 
 	// the font should totally upgrade with each age
@@ -494,8 +520,8 @@ func DrawUi(screen *ebiten.Image) {
 	// smaller font for more detailed information
 	text.Draw(screen, fmt.Sprintf("Citizens: %d/%d", len(civilization.citizens), civilization.max), fontDetail, 8, 30, color.White)
 
-	for i := 0; i < len(buttons); i++ {
-		buttons[i].DrawButton(screen)
+	for i := 0; i < len(AllButtons); i++ {
+		AllButtons[i].DrawButton(screen)
 	}
 }
 
@@ -608,8 +634,14 @@ func CreateCivilization() Civilization {
 }
 
 func CreateUi() {
-	buttons = append(buttons, CreateButton(&btn, "End turn", 16, 200))
-	buttons = append(buttons, CreateButton(&btn, "BALLS BALLS BALLS", 16, 240))
+
+	SButtons = make(map[string]*Button)
+
+	// "static" button
+	SButtons[BtnEndTurn] = CreateButton(&btn, "End turn", 16, 200)
+
+	// "anonymous" button
+	CreateButton(&btn, "BALLS BALLS BALLS", 16, 240)
 }
 
 // LoadUISprite assumes that the path contains left.png, middle.png and right.png

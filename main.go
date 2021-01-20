@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"io/ioutil"
 	"log"
@@ -38,7 +39,7 @@ func (a *Animated) Animate() {
 
 type UiSprite struct {
 	left *ebiten.Image
-	// middle should ideally be one pixel wide for scaling
+	// middle MUST be one pixel wide for text fit scaling
 	middle *ebiten.Image
 	right  *ebiten.Image
 }
@@ -75,6 +76,15 @@ type Thing struct {
 	completed bool
 	animated  *Animated
 	nothing   bool
+}
+
+type Button struct {
+	redraw  bool
+	content string
+	x, y    int
+	hover   bool // should default to false
+	img     *UiSprite
+	bounds  image.Rectangle
 }
 
 type Civilization struct {
@@ -128,6 +138,7 @@ var (
 	nothing Thing = Thing{
 		nothing: true,
 	}
+	buttons []Button
 )
 
 // TODO this should return some kind of tile build status object, e.g has building, can build on, etc
@@ -386,28 +397,54 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 
 // DrawButton handles text and button sizing and positioning
 // TODO button state variable
-func DrawButton(screen *ebiten.Image, str string, x, y int) {
 
-	strRect := text.BoundString(fontDetail, str)
+func CreateButton(img *UiSprite, str string, x, y int) Button {
+
+	return Button{
+		content: str,
+		x:       x,
+		y:       y,
+		img:     img,
+		hover:   false,
+	}
+}
+
+func (b *Button) DrawButton(screen *ebiten.Image) {
+
+	// TODO cache state so we don't need to recalculate if there are no changes.
+	// 	use redraw variable for this and a member function for move or update string
+	strRect := text.BoundString(fontDetail, b.content)
 	strWidth := strRect.Size().X
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(x), float64(y))
+	op.GeoM.Translate(float64(b.x), float64(b.y))
 	screen.DrawImage(btn.left, op)
 	w, _ := btn.left.Size()
 
 	op = &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(float64(strWidth), 1)
-	op.GeoM.Translate(float64(x+w), float64(y))
+	op.GeoM.Translate(float64(b.x+w), float64(b.y))
 	screen.DrawImage(btn.middle, op)
 
 	op = &ebiten.DrawImageOptions{}
-	bx := x + w + strWidth
-	op.GeoM.Translate(float64(bx), float64(y))
+	bx := b.x + w + strWidth
+	op.GeoM.Translate(float64(bx), float64(b.y))
 	screen.DrawImage(btn.right, op)
 
 	// draw button text
-	text.Draw(screen, str, fontDetail, x+w, y+12, color.White)
+	text.Draw(screen, b.content, fontDetail, b.x+w, b.y+12, color.White)
+
+	// TODO write unit tests for this
+	b.bounds = image.Rectangle{
+		image.Point{
+			b.x,
+			b.y,
+		},
+		image.Point{
+			bx + btn.right.Bounds().Bounds().Size().X,
+			b.y + btn.right.Bounds().Bounds().Size().Y,
+		},
+	}
 }
 
 func DrawUi(screen *ebiten.Image) {
@@ -418,8 +455,9 @@ func DrawUi(screen *ebiten.Image) {
 	// smaller font for more detailed information
 	text.Draw(screen, fmt.Sprintf("Citizens: %d/%d", len(civilization.citizens), civilization.max), fontDetail, 8, 30, color.White)
 
-	DrawButton(screen, "End turn", 16, 200)
-	DrawButton(screen, "BALLS BALLS BALLS", 16, 240)
+	for i := 0; i < len(buttons); i++ {
+		buttons[i].DrawButton(screen)
+	}
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -528,6 +566,11 @@ func CreateCivilization() Civilization {
 		citizens: citizens,
 		max:      0,
 	}
+}
+
+func CreateUi() {
+	buttons = append(buttons, CreateButton(&btn, "End turn", 16, 200))
+	buttons = append(buttons, CreateButton(&btn, "BALLS BALLS BALLS", 16, 240))
 }
 
 // LoadUISprite assumes that the path contains left.png, middle.png and right.png
@@ -671,6 +714,7 @@ func LoadSprites() {
 func Init() {
 	LoadFonts()
 	LoadSprites()
+	CreateUi()
 	world = CreateWorld()
 	civilization = CreateCivilization()
 }

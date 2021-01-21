@@ -23,6 +23,11 @@ type Citizen struct {
 	age int
 }
 
+type MessageQueue struct {
+	queue []string
+	max   int
+}
+
 type Animated struct {
 	frame   int
 	sprites []*ebiten.Image
@@ -149,6 +154,8 @@ var (
 		nothing: true,
 	}
 
+	Messages MessageQueue
+
 	// AllButtons is the master list of buttons. Used by renderer and mouse picker
 	AllButtons []*Button
 
@@ -175,6 +182,41 @@ func ResetFrameState() {
 	validMouseSelection = false
 	mtx = -1
 	mty = -1
+}
+
+func CreateMessages() MessageQueue {
+	q := make([]string, 0)
+	return MessageQueue{
+		queue: q,
+		max:   3,
+	}
+}
+
+func (m *MessageQueue) AddMessage(message string) {
+	queue := append(m.queue, message)
+	if len(queue) > m.max {
+		queue = queue[1:]
+	}
+	m.queue = queue
+}
+
+func (m *MessageQueue) DrawMessages(screen *ebiten.Image) {
+
+	x := 300
+	y := 0
+
+	for i := 0; i < len(Messages.queue); i++ {
+
+		// TODO calculate longest string, justify each message and translate
+		// 	the canvas accordingly (instead of using static coordinates)
+		canvas := ebiten.NewImage(600, 100)
+		text.Draw(canvas, Messages.queue[len(Messages.queue)-1-i], fontDetail, 20, 20, color.White)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(x), float64(y+(i*20)))
+		alpha := 1 - (0.3 * float64(i))
+		op.ColorM.Scale(1, 1, 1, alpha)
+		screen.DrawImage(canvas, op)
+	}
 }
 
 func UpdateDrawLocations() {
@@ -312,6 +354,7 @@ func HandleTurnEnd() {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		if SButtons[BtnEndTurn].hover {
 			epoch++
+			Messages.AddMessage(fmt.Sprintf("You advanced to the %s", epochs[epoch]))
 		}
 	}
 	return
@@ -527,6 +570,8 @@ func DrawUi(screen *ebiten.Image) {
 	for i := 0; i < len(AllButtons); i++ {
 		AllButtons[i].DrawButton(screen)
 	}
+	// newer messages should be at the bottom of the screen and older messages should fade
+	Messages.DrawMessages(screen)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -639,15 +684,16 @@ func CreateCivilization() Civilization {
 
 func CreateUi() {
 
+	Messages = CreateMessages()
 	SButtons = make(map[string]*Button)
 
 	// "static" button
 	var bw int
-	bx := 8
+	bx := 6
 	// this won't work as sHeight hasn't been set yet. it's set when the game is run,
 	// so you may have to conditionally run Init() at the top of the update function
 	// using the expected values for now
-	by := (WHeight / 2) - 24
+	by := (WHeight / 2) - 22
 	SButtons[BtnEndTurn], bw = CreateButton(&btn, "End turn", bx, by)
 	bx += bw
 	SButtons[BtnShowBuildings], bw = CreateButton(&btn, "Buildings", bx, by)

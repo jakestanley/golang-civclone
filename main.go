@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"log"
-	"math"
 
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 	"github.com/hajimehoshi/ebiten/inpututil"
@@ -23,62 +22,12 @@ type Citizen struct {
 	age int
 }
 
-type MessageQueue struct {
-	queue []string
-	max   int
-}
-
-type Animated struct {
-	frame   int
-	sprites []*ebiten.Image
-}
-
-func (a *Animated) Animate() {
-	a.frame++
-	if a.frame == len(a.sprites) {
-		a.frame = 0
-	}
-}
-
+// UI elements
 type UiSprite struct {
 	left *ebiten.Image
 	// middle MUST be one pixel wide for text fit scaling
 	middle *ebiten.Image
 	right  *ebiten.Image
-}
-
-type TileSprite struct {
-	flat   *ebiten.Image
-	south  *ebiten.Image
-	west   *ebiten.Image
-	height int
-}
-
-type Tile struct {
-	category int
-	building int
-	selected bool
-	op       *ebiten.DrawImageOptions
-}
-
-type Settlement struct {
-	citizens []*Citizen
-}
-
-type World struct {
-	// TODO Tile struct
-	tiles   [][]Tile
-	things  [][]Thing
-	xOffset int
-	yOffset int
-}
-
-// TODO consider polymorphism for buildings
-type Thing struct {
-	progress  float64
-	completed bool
-	animated  *Animated
-	nothing   bool
 }
 
 type Button struct {
@@ -90,9 +39,60 @@ type Button struct {
 	bounds  image.Rectangle
 }
 
-type Civilization struct {
-	citizens []Citizen
-	max      int
+type MessageQueue struct {
+	queue []string
+	max   int
+}
+
+// Tiles
+type Tile struct {
+	category int
+	building int
+	selected bool
+	op       *ebiten.DrawImageOptions
+}
+
+type TileSprite struct {
+	flat   *ebiten.Image
+	south  *ebiten.Image
+	west   *ebiten.Image
+	height int
+}
+
+// Animations
+type Animation struct {
+	frame   int
+	sprites []*ebiten.Image
+}
+
+func (a *Animation) Animate() {
+	a.frame++
+	if a.frame == len(a.sprites) {
+		a.frame = 0
+	}
+}
+
+// World
+type SettlementKind struct {
+	effort    float64
+	animation Animation
+	nothing   bool
+	popcap    int
+}
+
+type Settlement struct {
+	kind      *SettlementKind
+	progress  float64
+	completed bool
+	citizens  []Citizen
+}
+
+type World struct {
+	tiles          [][]Tile
+	settlementList []Settlement
+	settlementGrid [][]*Settlement
+	xOffset        int
+	yOffset        int
 }
 
 const (
@@ -108,39 +108,34 @@ const (
 	TileWidth = 64
 	// TileHeight height of tiles in pixels (unscaled)
 	TileHeight = 32
-	// SettlementCapacityVillage max citizens a settlement can contain
-	SettlementCapacityVillage = 10
 	// BtnEndTurn is the button map key for ending a turn
 	BtnEndTurn       = "END_TURN"
 	BtnShowBuildings = "SHOW_BUILDINGS"
 )
 
 var (
-	epochs []string = []string{
-		"Neolithic Age",
-		"Roman Age",
-		"Classical Age",
-		"Age of Steam",
-		"Modern Age",
-		"Transhuman Age",
-		"Apocalyptic Age",
-	}
-	sHeight      int
-	sWidth       int
-	lastFrame    int = 0
-	ticks        int = 0
-	year         int = 1
-	epoch        int = 0
-	world        World
-	civilization Civilization
-	fontTitle    font.Face
-	fontDetail   font.Face
-	grass        TileSprite
-	water        TileSprite
-	village      Animated
-	house        Animated
-	north        *ebiten.Image
-	btn          UiSprite
+
+	// constant vars (they're vars but we treat them as constants. see defs())
+	settlementKinds map[string]*SettlementKind
+	nothing         Settlement
+	epochs          []string
+	tileSprites     map[string]TileSprite
+
+	// ui stuff
+	fontTitle  font.Face
+	fontDetail font.Face
+	btn        UiSprite
+
+	// actual vars now
+	sHeight   int
+	sWidth    int
+	lastFrame int = 0
+	ticks     int = 0
+	year      int = 1
+	epoch     int = 0
+	world     World
+	north     *ebiten.Image
+
 	// ctx and cty are the coordinate of the tile that the cursor is on
 	ctx                 int  = 0
 	cty                 int  = 0
@@ -149,12 +144,8 @@ var (
 	mtx                 int  = -1
 	mty                 int  = -1
 	validMouseSelection bool = false
-	// nothing is used to initialise the 2D things array
-	nothing Thing = Thing{
-		nothing: true,
-	}
 
-	Messages MessageQueue
+	messages MessageQueue
 
 	// AllButtons is the master list of buttons. Used by renderer and mouse picker
 	AllButtons []*Button
@@ -170,11 +161,11 @@ var (
 func IsTileSelectionValid() bool {
 
 	// TODO check this works for a non-square world
-	return world.things[mtx][mty].completed ||
-		(mtx > 0 && world.things[mtx-1][mty].completed) ||
-		(mty > 0 && world.things[mtx][mty-1].completed) ||
-		(mtx < len(world.things)-1 && world.things[mtx+1][mty].completed) ||
-		(mtx < len(world.things) && mty < len(world.things[mtx])-1 && world.things[mtx][mty+1].completed)
+	return world.settlementGrid[mtx][mty].completed ||
+		(mtx > 0 && world.settlementGrid[mtx-1][mty].completed) ||
+		(mty > 0 && world.settlementGrid[mtx][mty-1].completed) ||
+		(mtx < len(world.settlementGrid)-1 && world.settlementGrid[mtx+1][mty].completed) ||
+		(mtx < len(world.settlementGrid) && mty < len(world.settlementGrid[mtx])-1 && world.settlementGrid[mtx][mty+1].completed)
 }
 
 // ResetFrameState is a handy function that will reset any variables that should not persist between updates
@@ -205,12 +196,12 @@ func (m *MessageQueue) DrawMessages(screen *ebiten.Image) {
 	x := 300
 	y := 0
 
-	for i := 0; i < len(Messages.queue); i++ {
+	for i := 0; i < len(messages.queue); i++ {
 
 		// TODO calculate longest string, justify each message and translate
 		// 	the canvas accordingly (instead of using static coordinates)
 		canvas := ebiten.NewImage(600, 100)
-		text.Draw(canvas, Messages.queue[len(Messages.queue)-1-i], fontDetail, 20, 20, color.White)
+		text.Draw(canvas, messages.queue[len(messages.queue)-1-i], fontDetail, 20, 20, color.White)
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(x), float64(y+(i*20)))
 		alpha := 1 - (0.3 * float64(i))
@@ -243,7 +234,7 @@ func UpdateDrawLocations() {
 			world.tiles[x][y].op = op
 
 			if world.tiles[x][y].category == TGrass {
-				op.GeoM.Translate(0, -float64(grass.height))
+				op.GeoM.Translate(0, -float64(tileSprites["grass"].height))
 			}
 
 			if !mouseFound {
@@ -292,36 +283,25 @@ func UpdateInputs() {
 
 		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
 
-			if world.things[mtx][mty].nothing {
-				world.things[mtx][mty] = Thing{
-					animated: &village,
-					nothing:  false,
-				}
+			if world.settlementGrid[mtx][mty].kind.nothing {
+				world.settlementGrid[mtx][mty] = CreateSettlement(settlementKinds["VILLAGE"])
 			}
 		}
-
-		// civilization.citizens = append(civilization.citizens, Citizen{
-		// 	age: 17,
-		// })
 	}
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 
 		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
 
-			if world.things[mtx][mty].nothing {
-				world.things[mtx][mty] = Thing{
-					progress:  0,
-					completed: false,
-					animated:  &house,
-					nothing:   false,
-				}
+			if world.settlementGrid[mtx][mty].kind.nothing {
+				world.settlementGrid[mtx][mty] = CreateSettlement(settlementKinds["SUBURB"])
 			}
 		}
 	}
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) {
-		world.things[mtx][mty] = nothing
+		// TODO destroy settlement. hopefully go gc is good
+		world.settlementGrid[mtx][mty] = &nothing
 	}
 
 	// move cursor north
@@ -357,7 +337,7 @@ func HandleTurnEnd() {
 				return
 			}
 			epoch++
-			Messages.AddMessage(fmt.Sprintf("You advanced to the %s", epochs[epoch]))
+			messages.AddMessage(fmt.Sprintf("You advanced to the %s", epochs[epoch]))
 		}
 	}
 	return
@@ -385,8 +365,8 @@ func (g *Game) Update() error {
 	// if the game is running at normal speed, the delta should be 1 etc
 
 	if ticks == 0 {
-		village.Animate()
-		house.Animate()
+		settlementKinds["VILLAGE"].animation.Animate()
+		settlementKinds["SUBURB"].animation.Animate()
 	}
 	// possible to use a float here for proper delta time?
 	ticks++
@@ -414,15 +394,15 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 					world.tiles[x][y].op.ColorM.Scale(0.6, 1, 0.6, 1)
 				}
 
-				screen.DrawImage(water.flat, world.tiles[x][y].op)
+				screen.DrawImage(tileSprites["water"].flat, world.tiles[x][y].op)
 
 				// if we're at a map edge, also draw the edge tiles
 				// ideally we want to also handle adjacent tiles being on the lower layer
 				if y == 0 {
-					screen.DrawImage(water.west, world.tiles[x][y].op)
+					screen.DrawImage(tileSprites["water"].west, world.tiles[x][y].op)
 				}
 				if x == len(world.tiles)-1 {
-					screen.DrawImage(water.south, world.tiles[x][y].op)
+					screen.DrawImage(tileSprites["water"].south, world.tiles[x][y].op)
 				}
 
 				// reset the color scaling in case we changed it
@@ -452,16 +432,16 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 					}
 				}
 
-				screen.DrawImage(grass.flat, world.tiles[x][y].op)
+				screen.DrawImage(tileSprites["grass"].flat, world.tiles[x][y].op)
 
 				// if the west adjacent tile is lower, draw the west side
 				if y == 0 || (world.tiles[x][y-1].category < world.tiles[x][y].category) {
-					screen.DrawImage(grass.west, world.tiles[x][y].op)
+					screen.DrawImage(tileSprites["grass"].west, world.tiles[x][y].op)
 				}
 
 				// if the south adjacent tile is lower, draw the south side
 				if x < len(world.tiles) || (world.tiles[x+1][y].category < world.tiles[x][y].category) {
-					screen.DrawImage(grass.south, world.tiles[x][y].op)
+					screen.DrawImage(tileSprites["grass"].south, world.tiles[x][y].op)
 				}
 
 				// reset the color scaling in case we changed it
@@ -471,16 +451,16 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 	}
 
 	// draw things
-	for x := 0; x < len(world.things); x++ {
-		for y := 0; y < len(world.things[x]); y++ {
-			if !world.things[x][y].nothing {
+	for x := 0; x < len(world.settlementGrid); x++ {
+		for y := 0; y < len(world.settlementGrid[x]); y++ {
+			if !world.settlementGrid[x][y].kind.nothing {
 				// constructions in progress will be transparent, with their opacity increasing as they near construction
-				if !world.things[x][y].completed {
+				if !world.settlementGrid[x][y].completed {
 					// do not animate things under construction as it more clearly indicates that it's not in operation
 					world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 0.4)
-					screen.DrawImage(world.things[x][y].animated.sprites[0], world.tiles[x][y].op)
+					screen.DrawImage(world.settlementGrid[x][y].kind.animation.sprites[0], world.tiles[x][y].op)
 				} else {
-					screen.DrawImage(world.things[x][y].animated.sprites[world.things[x][y].animated.frame], world.tiles[x][y].op)
+					screen.DrawImage(world.settlementGrid[x][y].kind.animation.sprites[world.settlementGrid[x][y].kind.animation.frame], world.tiles[x][y].op)
 				}
 				// reset scale in case we changed it
 				world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
@@ -568,13 +548,19 @@ func DrawUi(screen *ebiten.Image) {
 	text.Draw(screen, epochs[epoch], fontTitle, 8, 16, color.White)
 
 	// smaller font for more detailed information
-	text.Draw(screen, fmt.Sprintf("Citizens: %d/%d", len(civilization.citizens), civilization.max), fontDetail, 8, 30, color.White)
+	// TODO cache this value in update
+	// TODO previous frame state (so we can avoid unnecessary calculations)
+	civs := 0
+	for i := 0; i < len(world.settlementList); i++ {
+		civs += len(world.settlementList[i].citizens)
+	}
+	text.Draw(screen, fmt.Sprintf("Citizens: %d", civs), fontDetail, 8, 30, color.White)
 
 	for i := 0; i < len(AllButtons); i++ {
 		AllButtons[i].DrawButton(screen)
 	}
 	// newer messages should be at the bottom of the screen and older messages should fade
-	Messages.DrawMessages(screen)
+	messages.DrawMessages(screen)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -614,80 +600,68 @@ func CreateSelectedTile(category int) Tile {
 
 func CreateWorld() World {
 
-	// TODO make sure cardinal directions are easy to spot
-	tiles := IslandWorldTiles()
-
 	w := World{
-		tiles: tiles,
+		tiles: IslandWorldTiles(),
 	}
 
-	w.CreateThings()
+	w.CreateSettlements()
+
 	return w
 }
 
-func AddDebugThings(t [][]Thing) {
-	t[7][7] = Thing{
-		completed: true,
-		animated:  &village,
-		nothing:   false,
-	}
-	t[0][0] = Thing{
-		completed: true,
-		animated:  &village,
-		nothing:   false,
+func CreateSettlement(kind *SettlementKind) *Settlement {
+
+	return &Settlement{
+		kind:      kind,
+		completed: false,
+		progress:  0,
+		citizens:  []Citizen{},
 	}
 }
 
-func CreateSpawnSettlement() Thing {
+func CreateSpawnSettlement() Settlement {
 
+	sk := settlementKinds["VILLAGE"]
 	c := []Citizen{}
-	for i := 0; i < int(math.Floor(float64(SettlementCapacityVillage))); i++ {
-		c = append(c, Citizen{age: 18})
+
+	for i := 0; i < sk.popcap; i++ {
+		c = append(c, Citizen{
+			age: 18,
+		})
 	}
 
-	return Thing{
+	return Settlement{
+		kind:      sk,
 		completed: true,
-		animated:  &village,
-		nothing:   false,
+		citizens:  c,
 	}
 }
 
-// CreateThings basically just initialises an empty 2D array
-func (w *World) CreateThings() {
+func (w *World) CreateSettlements() {
 
-	t := [][]Thing{}
+	grid := [][]*Settlement{}
+	list := []Settlement{}
 
 	for x := 0; x < len(w.tiles); x++ {
-		txa := []Thing{}
+		txa := []*Settlement{}
 		for y := 0; y < len(w.tiles[x]); y++ {
-			txa = append(txa, nothing)
+			txa = append(txa, &nothing)
 		}
-		t = append(t, txa)
+		grid = append(grid, txa)
 	}
 
 	// spawn village in the middle(ish) of the map
-	t[3][4] = CreateSpawnSettlement()
+	s := CreateSpawnSettlement()
+	list = append(list, s)
+	grid[3][4] = &s
 
-	//AddDebugThings(t)
-	w.things = t
-}
-
-func CreateCivilization() Civilization {
-
-	citizens := []Citizen{}
-	citizens = append(citizens, Citizen{
-		age: 17,
-	})
-
-	return Civilization{
-		citizens: citizens,
-		max:      0,
-	}
+	w.settlementList = list
+	w.settlementGrid = grid
 }
 
 func CreateUi() {
 
-	Messages = CreateMessages()
+	messages = CreateMessages()
 	SButtons = make(map[string]*Button)
 
 	// "static" button
@@ -731,55 +705,9 @@ func LoadUISprite(path string) UiSprite {
 	}
 }
 
-func LoadSprite(path string, height int) TileSprite {
-	flat, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/flat.png", path))
-	if err != nil {
-		log.Fatal(err)
-	}
-	west, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/west.png", path))
-	if err != nil {
-		log.Fatal(err)
-	}
-	south, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/south.png", path))
-	if err != nil {
-		log.Fatal(err)
-	}
-	return TileSprite{
-		flat:   flat,
-		west:   west,
-		south:  south,
-		height: height,
-	}
-}
-
-// assuming all sprites are PNG
-func LoadAnimatedSprite(path string, name string, frames int) Animated {
-
-	sprites := []*ebiten.Image{}
-
-	for i := 0; i < frames; i++ {
-		img, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/%s%d.png", path, name, i))
-		if err != nil {
-			log.Fatal(err)
-		}
-		sprites = append(sprites, img)
-	}
-
-	return Animated{
-		frame:   0,
-		sprites: sprites,
-	}
-}
-
 func LoadSprites() {
 
 	// see loading github.com/rakyll/statik in NewImageFromFile documentation
-
-	grass = LoadSprite("img/tiles/grass", 2)
-	water = LoadSprite("img/tiles/water", 0)
-	village = LoadAnimatedSprite("img/sprites/buildings", "village", 2)
-	house = LoadAnimatedSprite("img/sprites/buildings", "house", 2)
-
 	var err error
 
 	// load north sprite
@@ -788,15 +716,56 @@ func LoadSprites() {
 		log.Fatal(err)
 	}
 
+	// TODO alpha property
 	btn = LoadUISprite("img/ui/button")
 }
 
+// because we can't use consts for stuff like this
+func defs() {
+
+	epochs = []string{
+		"Neolithic Age", "Roman Age", "Classical Age",
+		"Age of Steam", "Modern Age", "Transhuman Age",
+		"Apocalyptic Age",
+	}
+
+	settlementKinds = make(map[string]*SettlementKind)
+
+	settlementKinds["NOTHING"] = &SettlementKind{
+		nothing: true,
+		popcap:  0,
+	}
+
+	settlementKinds["VILLAGE"] = &SettlementKind{
+		animation: LoadAnimatedSprite("img/sprites/buildings", "village", 2),
+		popcap:    10,
+		nothing:   false,
+		// means it will take two person years to construct
+		effort: 0.5,
+	}
+
+	settlementKinds["SUBURB"] = &SettlementKind{
+		animation: LoadAnimatedSprite("img/sprites/buildings", "house", 2),
+		popcap:    20,
+		nothing:   false,
+		effort:    0.2,
+	}
+
+	nothing = Settlement{
+		kind: settlementKinds["NOTHING"],
+	}
+
+	tileSprites = make(map[string]TileSprite)
+	tileSprites["grass"] = LoadTileSprite("img/tiles/grass", 2)
+	tileSprites["water"] = LoadTileSprite("img/tiles/water", 0)
+}
+
 func Init() {
+	defs()
 	LoadFonts()
 	LoadSprites()
 	CreateUi()
 	world = CreateWorld()
-	civilization = CreateCivilization()
 }
 
 func main() {
@@ -804,9 +773,13 @@ func main() {
 
 	Init()
 
-	// do this with a function. it's to make the screen size fit the map (assuming 8x8) like minesweeper
+	// do this with a function. it's to make the screen size fit the map
+	//  (assuming 8x8) like minesweeper
 	ebiten.SetWindowSize(WWidth, WHeight)
 	ebiten.SetWindowTitle("Kingdom")
+
+	// mainly for my development
+	ebiten.SetWindowPosition(1400, 200)
 
 	game := &Game{}
 	if err := ebiten.RunGame(game); err != nil {

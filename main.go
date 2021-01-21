@@ -353,6 +353,9 @@ func HandleTurnEnd() {
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		if SButtons[BtnEndTurn].hover {
+			if epoch+1 >= len(epochs) {
+				return
+			}
 			epoch++
 			Messages.AddMessage(fmt.Sprintf("You advanced to the %s", epochs[epoch]))
 		}
@@ -691,7 +694,8 @@ func CreateUi() {
 	var bw int
 	bx := 6
 	// this won't work as sHeight hasn't been set yet. it's set when the game is run,
-	// so you may have to conditionally run Init() at the top of the update function
+	// so you may have to conditionally run Init() at the top of the update function.
+	// maybe you could put this in Layout()?
 	// using the expected values for now
 	by := (WHeight / 2) - 22
 	SButtons[BtnEndTurn], bw = CreateButton(&btn, "End turn", bx, by)

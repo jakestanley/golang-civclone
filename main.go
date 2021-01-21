@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"runtime"
 
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 	"github.com/hajimehoshi/ebiten/inpututil"
@@ -96,6 +97,7 @@ type World struct {
 }
 
 const (
+	MaxMemAlloc = 128
 	// WWidth default window width
 	WWidth = 1024
 	// WHeight default window height
@@ -155,6 +157,11 @@ var (
 
 	// AButtons "anonymous buttons", array of buttons usually created on the fly and handled differently
 	AButtons []*Button
+
+	// debug
+	m   runtime.MemStats
+	kib uint64
+	mib uint64
 )
 
 // TODO this should return some kind of tile build status object, e.g has building, can build on, etc
@@ -365,6 +372,19 @@ func (g *Game) Update() error {
 	// if the game is running at normal speed, the delta should be 1 etc
 
 	if ticks == 0 {
+
+		// debug memory usage
+		runtime.ReadMemStats(&m)
+		// https://forum.golangbridge.org/t/how-can-i-know-limit-memory-size-of-golang-application-sys-heap-stack/20070/2
+		kib = m.HeapAlloc / 1024
+		mib = kib / 1024
+		fmt.Printf("\tHeap allocated = %v MiB (%vKiB)\n", mib, kib)
+
+		if mib > MaxMemAlloc {
+			log.Fatal(fmt.Sprintf("Heap allocation %dMiB exceeded max %dMiB", mib, MaxMemAlloc))
+		}
+
+		// then resume with game stuff
 		settlementKinds["VILLAGE"].animation.Animate()
 		settlementKinds["SUBURB"].animation.Animate()
 	}
@@ -769,7 +789,7 @@ func Init() {
 }
 
 func main() {
-	fmt.Println("hello world")
+	fmt.Println("Starting...")
 
 	Init()
 

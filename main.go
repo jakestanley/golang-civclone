@@ -89,13 +89,14 @@ type Settlement struct {
 
 type World struct {
 	tiles          [][]Tile
-	settlementList []Settlement
+	settlementList []*Settlement
 	settlementGrid [][]*Settlement
 	xOffset        int
 	yOffset        int
 }
 
 const (
+	// MaxMemAlloc maximum MiB we want to allow to be allocated before we crash the program
 	MaxMemAlloc = 128
 	// WWidth default window width
 	WWidth = 1024
@@ -159,6 +160,7 @@ var (
 )
 
 // TODO this should return some kind of tile build status object, e.g has building, can build on, etc
+//  or perhaps adjacent tiles
 func IsTileSelectionValid() bool {
 
 	// TODO check this works for a non-square world
@@ -204,7 +206,7 @@ func (m *MessageQueue) DrawMessages(screen *ebiten.Image) {
 		canvas := ebiten.NewImage(600, 100)
 		text.Draw(canvas, messages.queue[len(messages.queue)-1-i], fontDetail, 20, 20, color.White)
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(x), float64(y+(i*20)))
+		op.GeoM.Translate(float64(x), float64(y+(i*14)))
 		alpha := 1 - (0.3 * float64(i))
 		op.ColorM.Scale(1, 1, 1, alpha)
 		screen.DrawImage(canvas, op)
@@ -285,7 +287,7 @@ func UpdateInputs() {
 		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
 
 			if world.settlementGrid[mtx][mty].kind.nothing {
-				world.settlementGrid[mtx][mty] = CreateSettlement(settlementKinds["VILLAGE"])
+				world.settlementGrid[mtx][mty] = world.CreateSettlement(settlementKinds["VILLAGE"])
 			}
 		}
 	}
@@ -295,7 +297,7 @@ func UpdateInputs() {
 		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
 
 			if world.settlementGrid[mtx][mty].kind.nothing {
-				world.settlementGrid[mtx][mty] = CreateSettlement(settlementKinds["SUBURB"])
+				world.settlementGrid[mtx][mty] = world.CreateSettlement(settlementKinds["SUBURB"])
 			}
 		}
 	}
@@ -332,16 +334,33 @@ func UpdateInputs() {
 
 func HandleTurnEnd() {
 
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		if SButtons[BtnEndTurn].hover {
-			if epoch+1 >= len(epochs) {
-				return
+	if !(inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && SButtons[BtnEndTurn].hover) {
+		return
+	}
+
+	year++
+
+	// every ten years for now
+	if year%10 == 0 && epoch+1 < len(epochs) {
+		epoch++
+		messages.AddMessage(fmt.Sprintf("You advanced to the %s", epochs[epoch]))
+	}
+
+	// iterate through constructions
+	for i := 0; i < len(world.settlementList); i++ {
+		s := world.settlementList[i]
+		if !s.kind.nothing {
+			if !s.completed {
+				// TODO use manpower of adjacent settlement. obviously this will be
+				//  a problem with multiple adjacent builds/settlements, for future
+				// 	jakey
+				s.progress += s.kind.effort
+				if s.progress >= 1 {
+					s.completed = true
+				}
 			}
-			epoch++
-			messages.AddMessage(fmt.Sprintf("You advanced to the %s", epochs[epoch]))
 		}
 	}
-	return
 }
 
 func (g *Game) Update() error {
@@ -459,13 +478,14 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 	for x := 0; x < len(world.settlementGrid); x++ {
 		for y := 0; y < len(world.settlementGrid[x]); y++ {
 			if !world.settlementGrid[x][y].kind.nothing {
+				s := world.settlementGrid[x][y]
 				// constructions in progress will be transparent, with their opacity increasing as they near construction
-				if !world.settlementGrid[x][y].completed {
+				if !s.completed {
 					// do not animate things under construction as it more clearly indicates that it's not in operation
 					world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 0.4)
-					screen.DrawImage(world.settlementGrid[x][y].kind.animation.sprites[0], world.tiles[x][y].op)
+					screen.DrawImage(s.kind.animation.sprites[0], world.tiles[x][y].op)
 				} else {
-					screen.DrawImage(world.settlementGrid[x][y].kind.animation.sprites[world.settlementGrid[x][y].kind.animation.frame], world.tiles[x][y].op)
+					screen.DrawImage(s.kind.animation.sprites[world.settlementGrid[x][y].kind.animation.frame], world.tiles[x][y].op)
 				}
 				// reset scale in case we changed it
 				world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
@@ -560,6 +580,7 @@ func DrawUi(screen *ebiten.Image) {
 		civs += len(world.settlementList[i].citizens)
 	}
 	text.Draw(screen, fmt.Sprintf("Citizens: %d", civs), fontDetail, 8, 30, color.White)
+	text.Draw(screen, fmt.Sprintf("Year: %d", year), fontDetail, 8, 44, color.White)
 
 	for i := 0; i < len(AllButtons); i++ {
 		AllButtons[i].DrawButton(screen)
@@ -614,17 +635,26 @@ func CreateWorld() World {
 	return w
 }
 
-func CreateSettlement(kind *SettlementKind) *Settlement {
+// CreateSettlement creates a settlement add it to the world's settlement
+// 	list (if it's not nothing) and return the settlement so it can be
+// 	added to the world grid location by the calling code
+func (w *World) CreateSettlement(kind *SettlementKind) *Settlement {
 
-	return &Settlement{
+	s := &Settlement{
 		kind:      kind,
 		completed: false,
 		progress:  0,
 		citizens:  []Citizen{},
 	}
+
+	if !kind.nothing {
+		w.settlementList = append(w.settlementList, s)
+	}
+
+	return s
 }
 
-func CreateSpawnSettlement() Settlement {
+func CreateSpawnSettlement() *Settlement {
 
 	sk := settlementKinds["VILLAGE"]
 	c := []Citizen{}
@@ -635,7 +665,7 @@ func CreateSpawnSettlement() Settlement {
 		})
 	}
 
-	return Settlement{
+	return &Settlement{
 		kind:      sk,
 		completed: true,
 		citizens:  c,
@@ -645,7 +675,7 @@ func CreateSpawnSettlement() Settlement {
 func (w *World) CreateSettlements() {
 
 	grid := [][]*Settlement{}
-	list := []Settlement{}
+	list := []*Settlement{}
 
 	for x := 0; x < len(w.tiles); x++ {
 		txa := []*Settlement{}
@@ -658,7 +688,7 @@ func (w *World) CreateSettlements() {
 	// spawn village in the middle(ish) of the map
 	s := CreateSpawnSettlement()
 	list = append(list, s)
-	grid[3][4] = &s
+	grid[3][4] = s
 
 	w.settlementList = list
 	w.settlementGrid = grid

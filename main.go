@@ -39,8 +39,14 @@ type Button struct {
 	bounds  image.Rectangle
 }
 
+type Message struct {
+	content string
+	dupes   int
+}
+
 type MessageQueue struct {
-	queue []string
+	// TODO duplicate message indicator
+	queue []*Message
 	max   int
 }
 
@@ -180,16 +186,38 @@ func ResetFrameState() {
 }
 
 func CreateMessages() MessageQueue {
-	q := make([]string, 0)
+	q := make([]*Message, 0)
 	return MessageQueue{
 		queue: q,
 		max:   8,
 	}
 }
 
-func (m *MessageQueue) AddMessage(message string) {
-	queue := append(m.queue, message)
+func (m *Message) ToString() string {
+	if m.dupes > 0 {
+		return fmt.Sprintf("%s (%d)", m.content, m.dupes+1)
+	} else {
+		return m.content
+	}
+}
+
+func (m *MessageQueue) AddMessage(content string) {
+
+	// get the last message. if the content matches, increment the value
+	if len(m.queue) > 0 {
+		lm := m.queue[len(m.queue)-1]
+		if lm.content == content {
+			lm.dupes++
+			return
+		}
+	}
+
+	queue := append(m.queue, &Message{
+		content: content,
+		dupes:   0,
+	})
 	if len(queue) > m.max {
+		// dequeue
 		queue = queue[1:]
 	}
 	m.queue = queue
@@ -205,7 +233,7 @@ func (m *MessageQueue) DrawMessages(screen *ebiten.Image) {
 		// TODO calculate longest string, justify each message and translate
 		// 	the canvas accordingly (instead of using static coordinates)
 		canvas := ebiten.NewImage(600, 100)
-		text.Draw(canvas, messages.queue[len(messages.queue)-1-i], fontDetail, 20, 20, color.White)
+		text.Draw(canvas, messages.queue[len(messages.queue)-1-i].ToString(), fontDetail, 20, 20, color.White)
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(x), float64(y+(i*14)))
 		alpha := 1 - (0.3 * float64(i))

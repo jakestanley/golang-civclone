@@ -74,6 +74,7 @@ func (a *Animation) Animate() {
 
 // World
 type SettlementKind struct {
+	name      string
 	effort    float64
 	animation Animation
 	nothing   bool
@@ -182,7 +183,7 @@ func CreateMessages() MessageQueue {
 	q := make([]string, 0)
 	return MessageQueue{
 		queue: q,
-		max:   3,
+		max:   8,
 	}
 }
 
@@ -357,6 +358,7 @@ func HandleTurnEnd() {
 				s.progress += s.kind.effort
 				if s.progress >= 1 {
 					s.completed = true
+					messages.AddMessage(fmt.Sprintf("Construction completed on '%s'", s.kind.name))
 				}
 			}
 		}
@@ -772,6 +774,7 @@ func defs() {
 	}
 
 	settlementKinds["VILLAGE"] = &SettlementKind{
+		name:      "village",
 		animation: LoadAnimatedSprite("img/sprites/buildings", "village", 2),
 		popcap:    10,
 		nothing:   false,

@@ -53,16 +53,18 @@ type MessageQueue struct {
 
 // Tiles
 type Tile struct {
-	category int
+	kind     int
 	building int
 	selected bool
 	op       *ebiten.DrawImageOptions
 }
 
+// TODO TileType struct?
 type TileSprite struct {
 	flat   *ebiten.Image
 	south  *ebiten.Image
 	west   *ebiten.Image
+	// TODO move height into tile when we render heights dynamically
 	height int
 }
 
@@ -266,7 +268,7 @@ func UpdateDrawLocations() {
 			op.GeoM.Translate(tx, ty)
 			world.tiles[x][y].op = op
 
-			if world.tiles[x][y].category == TGrass {
+			if world.tiles[x][y].kind == TGrass {
 				op.GeoM.Translate(0, -float64(tileSprites["grass"].height))
 			}
 
@@ -314,7 +316,7 @@ func UpdateInputs() {
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 
-		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
+		if validMouseSelection && world.tiles[mtx][mty].kind == TGrass {
 
 			if world.settlementGrid[mtx][mty].kind.nothing {
 				world.settlementGrid[mtx][mty] = world.CreateSettlement(settlementKinds["VILLAGE"])
@@ -324,7 +326,7 @@ func UpdateInputs() {
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 
-		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
+		if validMouseSelection && world.tiles[mtx][mty].kind == TGrass {
 
 			if world.settlementGrid[mtx][mty].kind.nothing {
 				world.settlementGrid[mtx][mty] = world.CreateSettlement(settlementKinds["SUBURB"])
@@ -434,49 +436,57 @@ func (g *Game) Update() error {
 	return nil
 }
 
+func DrawTile(screen *ebiten.Image, world *World, ttype string, x, y int) {
+
+	// it would probably be easier to draw rear tiles first
+	screen.DrawImage(tileSprites[ttype].flat, world.tiles[x][y].op)
+
+	// if the west adjacent tile is lower, draw the west side
+	// TODO change this to use height, not kind. TWater < TGrass
+	// 	for now but that's not how it should work long term
+	if y == 0 || (world.tiles[x][y-1].kind < world.tiles[x][y].kind) {
+		screen.DrawImage(tileSprites[ttype].west, world.tiles[x][y].op)
+	}
+
+	// if the south adjacent tile is lower, draw the south side
+	if x < len(world.tiles) || (world.tiles[x+1][y].kind < world.tiles[x][y].kind) {
+		screen.DrawImage(tileSprites[ttype].south, world.tiles[x][y].op)
+	}
+
+	// TODO add TGrass property to tile. should be able to loop through tile types
+}
+
 func DrawWorld(screen *ebiten.Image, world *World) {
 
 	// don't redraw if map doesn't change between frames
 
-	// north will be top left
+	// north is top left
 	// TODO figure this out before the draw call, as we'll need it in the update anyway. saves a load of maths too
 	// draw water layer
+
+	layer0 := ebiten.NewImage(sWidth, sHeight)
+	layer1 := ebiten.NewImage(sWidth, sHeight)
+
 	for x := 0; x < len(world.tiles); x++ {
 		for y := 0; y < len(world.tiles[x]); y++ {
-			if world.tiles[x][y].category == TWater {
+
+			var layer *ebiten.Image
+
+			if world.tiles[x][y].kind == TWater {
+
+				layer = layer0
 
 				if x == ctx && y == cty {
 					world.tiles[x][y].op.ColorM.Scale(0.6, 1, 0.6, 1)
 				}
 
-				screen.DrawImage(tileSprites["water"].flat, world.tiles[x][y].op)
-
-				// if we're at a map edge, also draw the edge tiles
-				// ideally we want to also handle adjacent tiles being on the lower layer
-				if y == 0 {
-					screen.DrawImage(tileSprites["water"].west, world.tiles[x][y].op)
-				}
-				if x == len(world.tiles)-1 {
-					screen.DrawImage(tileSprites["water"].south, world.tiles[x][y].op)
-				}
+				DrawTile(layer, world, "water", x, y)
 
 				// reset the color scaling in case we changed it
 				world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
+			} else if world.tiles[x][y].kind == TGrass {
 
-			}
-
-			// draw north arrow. for debugging only atm
-			if x == 0 {
-				screen.DrawImage(north, world.tiles[x][y].op)
-			}
-		}
-	}
-
-	// TODO dedupe functionality between these two loops
-	// draw grass layer // why isn't this in the above block?
-	for x := 0; x < len(world.tiles); x++ {
-		for y := 0; y < len(world.tiles[x]); y++ {
-			if world.tiles[x][y].category == TGrass {
+				layer = layer1
 
 				// colour tile differently based on selection
 				if world.tiles[x][y].selected {
@@ -487,24 +497,23 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 					}
 				}
 
-				screen.DrawImage(tileSprites["grass"].flat, world.tiles[x][y].op)
-
-				// if the west adjacent tile is lower, draw the west side
-				if y == 0 || (world.tiles[x][y-1].category < world.tiles[x][y].category) {
-					screen.DrawImage(tileSprites["grass"].west, world.tiles[x][y].op)
-				}
-
-				// if the south adjacent tile is lower, draw the south side
-				if x < len(world.tiles) || (world.tiles[x+1][y].category < world.tiles[x][y].category) {
-					screen.DrawImage(tileSprites["grass"].south, world.tiles[x][y].op)
-				}
-
-				// TODO add TGrass property to tile. should be able to loop through tile types
-				// reset the color scaling in case we changed it
-				world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
+				DrawTile(layer1, world, "grass", x, y)
 			}
+
+			// draw north arrow. for debugging only atm
+			if x == 0 {
+				layer.DrawImage(north, world.tiles[x][y].op)
+			}
+
+			// TODO reset the color scaling in case we changed it
+			// 	I don't think the following will work (it won't achieve the above)
+			world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
 		}
 	}
+
+	// this would be useful for colouring an entire scene
+	screen.DrawImage(layer0, &ebiten.DrawImageOptions{})
+	screen.DrawImage(layer1, &ebiten.DrawImageOptions{})
 
 	// draw things
 	for x := 0; x < len(world.settlementGrid); x++ {
@@ -642,16 +651,16 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 	return sWidth, sHeight
 }
 
-func CreateTile(category int) Tile {
+func CreateTile(kind int) Tile {
 	return Tile{
-		category: category,
+		kind:     kind,
 		selected: false,
 	}
 }
 
-func CreateSelectedTile(category int) Tile {
+func CreateSelectedTile(kind int) Tile {
 	return Tile{
-		category: category,
+		kind:     kind,
 		selected: true,
 	}
 }

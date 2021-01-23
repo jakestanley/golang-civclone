@@ -1,0 +1,7 @@
+- dynamic tile heights (render sides behind first scale and render line and flats behind)
+- city view ui
+- allocate resources
+- building process should factor in citizens and usage elsewhere
+    - i.e two adjacent constructions to one city should receive half progress
+- monolith spawns
+- BALLS BALLS BALLS functionality

@@ -3,21 +3,22 @@ package main
 import (
 	"fmt"
 	"log"
+	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten"
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 )
 
 func LoadTileSprite(path string, height int) TileSprite {
-	flat, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/flat.png", path))
+	flat, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "flat.png"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	west, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/west.png", path))
+	west, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "west.png"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	south, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/south.png", path))
+	south, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "south.png"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func LoadAnimatedSprite(path string, name string, frames int) Animation {
 	sprites := []*ebiten.Image{}
 
 	for i := 0; i < frames; i++ {
-		img, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/%s%d.png", path, name, i))
+		img, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, fmt.Sprintf("%s%d.png", name, i)))
 		if err != nil {
 			log.Fatal(err)
 		}

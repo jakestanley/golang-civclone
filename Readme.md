@@ -89,6 +89,10 @@ you start as a single neolithic village consisting of a few villagers
 
 - Graphics API: [ebiten](https://ebiten.org) by hajimehoshi
 
+### special thanks
+- Tom H
+- Rich T
+
 ### fonts
 - [Volter (Goldfish)](https://www.dafont.com/volter-goldfish.font) by cocoFabien
 - [Alagard](https://www.dafont.com/alagard.font) by Hewett Tsoi

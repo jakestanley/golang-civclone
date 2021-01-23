@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 	"github.com/hajimehoshi/ebiten/inpututil"
@@ -472,7 +473,7 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 	}
 
 	// TODO dedupe functionality between these two loops
-	// draw grass layer // why isn't this i nthe above block?
+	// draw grass layer // why isn't this in the above block?
 	for x := 0; x < len(world.tiles); x++ {
 		for y := 0; y < len(world.tiles[x]); y++ {
 			if world.tiles[x][y].category == TGrass {
@@ -498,6 +499,7 @@ func DrawWorld(screen *ebiten.Image, world *World) {
 					screen.DrawImage(tileSprites["grass"].south, world.tiles[x][y].op)
 				}
 
+				// TODO add TGrass property to tile. should be able to loop through tile types
 				// reset the color scaling in case we changed it
 				world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
 			}
@@ -748,17 +750,17 @@ func CreateUi() {
 // LoadUISprite assumes that the path contains left.png, middle.png and right.png
 func LoadUISprite(path string) UiSprite {
 
-	left, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/left.png", path))
+	left, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "left.png"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	middle, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/middle.png", path))
+	middle, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "middle.png"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	right, _, err := ebitenutil.NewImageFromFile(fmt.Sprintf("%s/right.png", path))
+	right, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "right.png"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -776,7 +778,7 @@ func LoadSprites() {
 	var err error
 
 	// load north sprite
-	north, _, err = ebitenutil.NewImageFromFile("img/tiles/north.png")
+	north, _, err = ebitenutil.NewImageFromFile(filepath.Join("img", "tiles", "north.png"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -803,7 +805,7 @@ func defs() {
 
 	settlementKinds["VILLAGE"] = &SettlementKind{
 		name:      "village",
-		animation: LoadAnimatedSprite("img/sprites/buildings", "village", 2),
+		animation: LoadAnimatedSprite(filepath.Join("img", "sprites", "buildings"), "village", 2),
 		popcap:    10,
 		nothing:   false,
 		// means it will take two person years to construct
@@ -811,7 +813,7 @@ func defs() {
 	}
 
 	settlementKinds["SUBURB"] = &SettlementKind{
-		animation: LoadAnimatedSprite("img/sprites/buildings", "house", 2),
+		animation: LoadAnimatedSprite(filepath.Join("img", "sprites", "buildings"), "house", 2),
 		popcap:    20,
 		nothing:   false,
 		effort:    0.2,
@@ -822,8 +824,8 @@ func defs() {
 	}
 
 	tileSprites = make(map[string]TileSprite)
-	tileSprites["grass"] = LoadTileSprite("img/tiles/grass", 2)
-	tileSprites["water"] = LoadTileSprite("img/tiles/water", 0)
+	tileSprites["grass"] = LoadTileSprite(filepath.Join("img", "tiles", "grass"), 2)
+	tileSprites["water"] = LoadTileSprite(filepath.Join("img", "tiles", "water"), 0)
 }
 
 func Init() {

@@ -1,7 +1,8 @@
-- dynamic tile heights (render sides behind first scale and render line and flats behind)
+- dynamic tile heights (render sides behind first scale and render line and flats behind) - IN PROGRESS
 - dynamic tile colouring - no manually colouring different tiles (shading can be automated too)
 - dynamic tile rendering (arbitrary width and height)
 - water tiles move up and down like waves (nice effect)
+- fix WASD water highlighting (mouse selection work broke it)
 - city view ui
 - allocate resources
 - building process should factor in citizens and usage elsewhere

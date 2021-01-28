@@ -546,13 +546,17 @@ func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype st
 	}
 
 	if y == 0 || (world.tiles[x][y-1].height < world.tiles[x][y].height) {
-		layer.DrawImage(tileSprites[ttype].westMid, tile.opsWest)
+		if ttype != "water" {
+			layer.DrawImage(tileSprites[ttype].westMid, tile.opsWest)
+		}
 		layer.DrawImage(tileSprites[ttype].west, tile.opsFlat)
 	}
 
 	// if the south adjacent tile is lower, draw the south side
 	if x < len(world.tiles) || (world.tiles[x+1][y].height < world.tiles[x][y].height) {
-		layer.DrawImage(tileSprites[ttype].southMid, tile.opsSouth)
+		if ttype != "water" {
+			layer.DrawImage(tileSprites[ttype].southMid, tile.opsSouth)
+		}
 		layer.DrawImage(tileSprites[ttype].south, tile.opsFlat)
 	}
 

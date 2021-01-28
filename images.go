@@ -9,7 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 )
 
-func LoadTileSprite(path string, height int) TileSprite {
+func LoadTileSprite(path string) TileSprite {
 	flat, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "flat.png"))
 	if err != nil {
 		log.Fatal(err)
@@ -22,11 +22,20 @@ func LoadTileSprite(path string, height int) TileSprite {
 	if err != nil {
 		log.Fatal(err)
 	}
+	westMid, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "west-mid.png"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	southMid, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "south-mid.png"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	return TileSprite{
-		flat:   flat,
-		west:   west,
-		south:  south,
-		height: height,
+		flat:     flat,
+		west:     west,
+		westMid:  westMid,
+		south:    south,
+		southMid: southMid,
 	}
 }
 

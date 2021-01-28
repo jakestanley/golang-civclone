@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/ebitenutil"
@@ -56,16 +57,24 @@ type Tile struct {
 	kind     int
 	building int
 	selected bool
-	op       *ebiten.DrawImageOptions
+	moved    bool
+	height   int
+	liquid   bool
+	// cache
+	tx       float64
+	ty       float64
+	opsFlat  *ebiten.DrawImageOptions
+	opsWest  *ebiten.DrawImageOptions
+	opsSouth *ebiten.DrawImageOptions
 }
 
 // TODO TileType struct?
 type TileSprite struct {
-	flat   *ebiten.Image
-	south  *ebiten.Image
-	west   *ebiten.Image
-	// TODO move height into tile when we render heights dynamically
-	height int
+	flat     *ebiten.Image
+	south    *ebiten.Image
+	west     *ebiten.Image
+	southMid *ebiten.Image
+	westMid  *ebiten.Image
 }
 
 // Animations
@@ -103,15 +112,16 @@ type World struct {
 	settlementGrid [][]*Settlement
 	xOffset        int
 	yOffset        int
+	redraw         bool
 }
 
 const (
 	// MaxMemAlloc maximum MiB we want to allow to be allocated before we crash the program
 	MaxMemAlloc = 128
-	// WWidth default window width
-	WWidth = 1024
-	// WHeight default window height
-	WHeight = 600
+	// WindowWidth default window width
+	WindowWidth = 1024
+	// WindowHeight default window height
+	WindowHeight = 600
 	// TWater water tile type index
 	TWater = 0
 	// TGrass grass tile type index
@@ -132,6 +142,13 @@ var (
 	nothing         Settlement
 	epochs          []string
 	tileSprites     map[string]TileSprite
+
+	// meta game state
+	initialised bool
+
+	// world images
+	tilesLayer  *ebiten.Image
+	thingsLayer *ebiten.Image
 
 	// ui stuff
 	fontTitle  font.Face
@@ -167,6 +184,10 @@ var (
 
 	// AButtons "anonymous buttons", array of buttons usually created on the fly and handled differently
 	AButtons []*Button
+
+	// debugging
+	renderTilesLayer  bool
+	renderThingsLayer bool
 )
 
 // TODO this should return some kind of tile build status object, e.g has building, can build on, etc
@@ -199,9 +220,8 @@ func CreateMessages() MessageQueue {
 func (m *Message) ToString() string {
 	if m.dupes > 0 {
 		return fmt.Sprintf("%s (%d)", m.content, m.dupes+1)
-	} else {
-		return m.content
 	}
+	return m.content
 }
 
 func (m *MessageQueue) AddMessage(content string) {
@@ -245,6 +265,7 @@ func (m *MessageQueue) DrawMessages(screen *ebiten.Image) {
 	}
 }
 
+// TODO rename to UpdateWorld or something
 func UpdateDrawLocations() {
 
 	// north will be top left
@@ -253,40 +274,43 @@ func UpdateDrawLocations() {
 
 	// mouse position must have been updated by now
 	mxf, myf := float64(mx), float64(my)
+	// TODO height offset for higher tiles
 	mouseFound := false
 
 	for x := 0; x < len(world.tiles); x++ {
 		for y := 0; y < len(world.tiles[x]); y++ {
-			// use tile width vars or consts
-			op := &ebiten.DrawImageOptions{}
-			op.ColorM.Scale(1, 1, 1, 1)
 
-			// tx and ty are where the tile will be drawn from
-			tx := float64(xOffset) + float64(y*32) + float64(x*32)
-			ty := float64(yOffset) - float64(16*y) + float64(x*16)
+			tx := world.tiles[x][y].tx
+			ty := world.tiles[x][y].ty
 
-			op.GeoM.Translate(tx, ty)
-			world.tiles[x][y].op = op
+			if world.tiles[x][y].moved {
 
-			if world.tiles[x][y].kind == TGrass {
-				op.GeoM.Translate(0, -float64(tileSprites["grass"].height))
+				// TODO use tile width vars or consts
+				// tx and ty are where the tile will be drawn from
+				// arguably this may not belong in here
+				// Recalculating tile position on screen
+				tx = float64(xOffset) + float64(y*32) + float64(x*32)
+				ty = float64(yOffset) - float64(16*y) + float64(x*16)
+				ty = ty - float64(world.tiles[x][y].height)
+
+				// update dem positions
+				world.tiles[x][y].tx = tx
+				world.tiles[x][y].ty = ty
 			}
 
+			world.tiles[x][y].selected = false
 			if !mouseFound {
 				// this matches a box in the centre of the sprite. needs to actually fit the iso
 				// if you treat what the player sees as a rectangle, it won't work correctly
 				// can use rect and Point::in for this I think
+				// I'd like to evaluate all this and find the one with the pointer closest to the center tbh as a long term solution
 				if (tx+16 < mxf) && (mxf < tx+48) && (ty+8 < myf) && (myf < ty+24) {
 
 					world.tiles[x][y].selected = true
 					mtx, mty = x, y
 					mouseFound = true
 					validMouseSelection = IsTileSelectionValid()
-				} else {
-					world.tiles[x][y].selected = false
 				}
-			} else {
-				world.tiles[x][y].selected = false
 			}
 		}
 	}
@@ -362,6 +386,28 @@ func UpdateInputs() {
 			cty++
 		}
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		fmt.Println("Thanks for playing")
+		os.Exit(0)
+	}
+
+	// debugging
+	if inpututil.IsKeyJustPressed(ebiten.Key1) {
+		renderTilesLayer = !renderTilesLayer
+		if renderTilesLayer {
+			fmt.Println("Tiles layer shown")
+		} else {
+			fmt.Println("Tiles layer hidden")
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key2) {
+		renderThingsLayer = !renderThingsLayer
+		if renderThingsLayer {
+			fmt.Println("Things layer shown")
+		} else {
+			fmt.Println("Things layer hidden")
+		}
+	}
 }
 
 func HandleTurnEnd() {
@@ -398,9 +444,16 @@ func HandleTurnEnd() {
 
 func (g *Game) Update() error {
 
-	ResetFrameState()
+	// initialise the game state if it's not
+	if initialised {
+		ResetFrameState()
+	} else {
+		initialised = true
+		Init()
+	}
 
 	// TODO bind to window. ebiten seems to track outside of the window too
+	// 	i.e if mx < 0, mx = 0,
 	mx, my = ebiten.CursorPosition()
 
 	// this also finds which tile the mouse is on
@@ -436,107 +489,162 @@ func (g *Game) Update() error {
 	return nil
 }
 
-func DrawTile(screen *ebiten.Image, world *World, ttype string, x, y int) {
+// Am I doing this right?
+func Copy(g *ebiten.GeoM) ebiten.GeoM {
+	geom := ebiten.GeoM{}
+	geom.Translate(g.Element(0, 2), g.Element(1, 2))
+	return geom
+}
 
-	// it would probably be easier to draw rear tiles first
-	screen.DrawImage(tileSprites[ttype].flat, world.tiles[x][y].op)
+func GetT(g *ebiten.GeoM) (float64, float64) {
+	return g.Element(0, 2), g.Element(1, 2)
+}
 
-	// if the west adjacent tile is lower, draw the west side
-	// TODO change this to use height, not kind. TWater < TGrass
-	// 	for now but that's not how it should work long term
-	if y == 0 || (world.tiles[x][y-1].kind < world.tiles[x][y].kind) {
-		screen.DrawImage(tileSprites[ttype].west, world.tiles[x][y].op)
+// TODO consider making this a function of Tile
+// 	although tiles do need the context of surrounding tiles provided by world
+func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype string, x, y int) {
+
+	tile := &world.tiles[x][y]
+
+	if tile.moved || tile.selected {
+
+		const extraTileHeight = 16
+
+		geomFlat := &ebiten.GeoM{}
+		geomFlat.Translate(tile.tx, tile.ty)
+
+		geomWest := &ebiten.GeoM{}
+		// order is important. scale _then_ translate
+		geomWest.Scale(1, float64(tile.height+extraTileHeight))
+		geomWest.Translate(tile.tx, tile.ty+16) // magic number
+
+		geomSouth := &ebiten.GeoM{}
+		geomSouth.Scale(1, float64(tile.height+extraTileHeight)) // TODO something else so it goes _below_ the neighbouring tiles if applicable
+		geomSouth.Translate(tile.tx+30, tile.ty+16)
+
+		opsFlat := &ebiten.DrawImageOptions{
+			GeoM:   *geomFlat,
+			ColorM: *colour,
+		}
+		opsWest := &ebiten.DrawImageOptions{
+			GeoM:   *geomWest,
+			ColorM: *colour,
+		}
+		opsSouth := &ebiten.DrawImageOptions{
+			GeoM:   *geomSouth,
+			ColorM: *colour,
+		}
+
+		// cache
+		tile.opsFlat = opsFlat
+		tile.opsWest = opsWest
+		tile.opsSouth = opsSouth
+	} else if !tile.selected {
+		tile.opsFlat.ColorM.Reset()
+		tile.opsWest.ColorM.Reset()
+		tile.opsSouth.ColorM.Reset()
+	}
+
+	if y == 0 || (world.tiles[x][y-1].height < world.tiles[x][y].height) {
+		layer.DrawImage(tileSprites[ttype].westMid, tile.opsWest)
+		layer.DrawImage(tileSprites[ttype].west, tile.opsFlat)
 	}
 
 	// if the south adjacent tile is lower, draw the south side
-	if x < len(world.tiles) || (world.tiles[x+1][y].kind < world.tiles[x][y].kind) {
-		screen.DrawImage(tileSprites[ttype].south, world.tiles[x][y].op)
+	if x < len(world.tiles) || (world.tiles[x+1][y].height < world.tiles[x][y].height) {
+		layer.DrawImage(tileSprites[ttype].southMid, tile.opsSouth)
+		layer.DrawImage(tileSprites[ttype].south, tile.opsFlat)
 	}
 
+	layer.DrawImage(tileSprites[ttype].flat, tile.opsFlat)
 	// TODO add TGrass property to tile. should be able to loop through tile types
 }
 
-func DrawWorld(screen *ebiten.Image, world *World) {
+func DrawWorld(layer *ebiten.Image, world *World) {
 
 	// don't redraw if map doesn't change between frames
 
 	// north is top left
-	// TODO figure this out before the draw call, as we'll need it in the update anyway. saves a load of maths too
-	// draw water layer
-
-	layer0 := ebiten.NewImage(sWidth, sHeight)
-	layer1 := ebiten.NewImage(sWidth, sHeight)
-
+	// might want to store this layer globally or something in between frames and reuse it
 	for x := 0; x < len(world.tiles); x++ {
-		for y := 0; y < len(world.tiles[x]); y++ {
+		for y := len(world.tiles[x]) - 1; y > -1; y-- {
 
-			var layer *ebiten.Image
+			var ttype string
+			colour := &ebiten.ColorM{}
 
+			// tile type specific shading
 			if world.tiles[x][y].kind == TWater {
 
-				layer = layer0
+				ttype = "water"
 
 				if x == ctx && y == cty {
-					world.tiles[x][y].op.ColorM.Scale(0.6, 1, 0.6, 1)
+					colour.Scale(0.6, 1, 0.6, 1)
 				}
 
-				DrawTile(layer, world, "water", x, y)
-
-				// reset the color scaling in case we changed it
-				world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
 			} else if world.tiles[x][y].kind == TGrass {
 
-				layer = layer1
+				ttype = "grass"
 
 				// colour tile differently based on selection
 				if world.tiles[x][y].selected {
 					if validMouseSelection {
-						world.tiles[x][y].op.ColorM.Scale(0.6, 1, 0.6, 1)
+						colour.Scale(0.6, 1, 0.6, 1)
 					} else {
-						world.tiles[x][y].op.ColorM.Scale(1, 0.6, 0.6, 1)
+						colour.Scale(1, 0.6, 0.6, 1)
 					}
 				}
-
-				DrawTile(layer1, world, "grass", x, y)
 			}
 
-			// draw north arrow. for debugging only atm
-			if x == 0 {
-				layer.DrawImage(north, world.tiles[x][y].op)
-			}
+			DrawTile(colour, layer, world, ttype, x, y)
 
-			// TODO reset the color scaling in case we changed it
-			// 	I don't think the following will work (it won't achieve the above)
-			world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
-		}
-	}
-
-	// this would be useful for colouring an entire scene
-	screen.DrawImage(layer0, &ebiten.DrawImageOptions{})
-	screen.DrawImage(layer1, &ebiten.DrawImageOptions{})
-
-	// draw things
-	for x := 0; x < len(world.settlementGrid); x++ {
-		for y := 0; y < len(world.settlementGrid[x]); y++ {
-			if !world.settlementGrid[x][y].kind.nothing {
-				s := world.settlementGrid[x][y]
-				// constructions in progress will be transparent, with their opacity increasing as they near construction
-				if !s.completed {
-					// do not animate things under construction as it more clearly indicates that it's not in operation
-					world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 0.4)
-					screen.DrawImage(s.kind.animation.sprites[0], world.tiles[x][y].op)
-				} else {
-					screen.DrawImage(s.kind.animation.sprites[world.settlementGrid[x][y].kind.animation.frame], world.tiles[x][y].op)
-				}
-				// reset scale in case we changed it
-				world.tiles[x][y].op.ColorM.Scale(1, 1, 1, 1)
-			}
+			// we're done with the tile move state. on to the next frame
+			world.tiles[x][y].moved = false
 		}
 	}
 
 	// debugging only
 	// mx, my := ebiten.CursorPosition()
 	// ebitenutil.DrawRect(screen, float64(mx-32), float64(my-16), 64, 32, color.Opaque)
+}
+
+func DrawThings(layer *ebiten.Image) {
+
+	for x := 0; x < len(world.settlementGrid); x++ {
+		for y := 0; y < len(world.settlementGrid[x]); y++ {
+			if !world.settlementGrid[x][y].kind.nothing {
+				s := world.settlementGrid[x][y]
+				// constructions in progress will be transparent, with their opacity increasing as they near construction
+
+				var frame *ebiten.Image
+				ops := &ebiten.DrawImageOptions{}
+				ops.GeoM.Translate(world.tiles[x][y].tx, world.tiles[x][y].ty)
+
+				// TODO i broke !s.completed scaling
+				if !s.completed {
+					ops.ColorM.Scale(1, 1, 1, 0.4)
+					// do not animate things under construction as it more clearly indicates that it's not in operation
+					frame = s.kind.animation.sprites[0]
+				} else {
+					frame = s.kind.animation.sprites[world.settlementGrid[x][y].kind.animation.frame]
+				}
+
+				layer.DrawImage(frame, ops)
+			}
+		}
+	}
+}
+
+func DrawLayers(screen *ebiten.Image) {
+
+	if renderTilesLayer {
+		screen.DrawImage(tilesLayer, &ebiten.DrawImageOptions{})
+	}
+	if renderThingsLayer {
+		screen.DrawImage(thingsLayer, &ebiten.DrawImageOptions{})
+	}
+
+	// workaround for now
+	thingsLayer.Clear()
 }
 
 // DrawButton handles text and button sizing and positioning
@@ -634,7 +742,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// render
 	screen.Fill(color.Black)
 
-	DrawWorld(screen, &world)
+	DrawWorld(tilesLayer, &world)
+	DrawThings(thingsLayer)
+	DrawLayers(screen)
 	DrawUi(screen)
 
 	// TODO if debug
@@ -651,24 +761,21 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 	return sWidth, sHeight
 }
 
-func CreateTile(kind int) Tile {
+func CreateTile(kind int, height int, liquid bool) Tile {
 	return Tile{
 		kind:     kind,
 		selected: false,
-	}
-}
-
-func CreateSelectedTile(kind int) Tile {
-	return Tile{
-		kind:     kind,
-		selected: true,
+		moved:    true,
+		height:   height,
+		liquid:   liquid,
 	}
 }
 
 func CreateWorld() World {
 
 	w := World{
-		tiles: IslandWorldTiles(),
+		tiles:  IslandWorldTiles(),
+		redraw: true,
 	}
 
 	w.CreateSettlements()
@@ -735,6 +842,12 @@ func (w *World) CreateSettlements() {
 	w.settlementGrid = grid
 }
 
+func CreateLayers() {
+
+	tilesLayer = ebiten.NewImage(WindowWidth/2, WindowHeight/2)
+	thingsLayer = ebiten.NewImage(WindowWidth/2, WindowHeight/2)
+}
+
 func CreateUi() {
 
 	messages = CreateMessages()
@@ -747,7 +860,7 @@ func CreateUi() {
 	// so you may have to conditionally run Init() at the top of the update function.
 	// maybe you could put this in Layout()?
 	// using the expected values for now
-	by := (WHeight / 2) - 22
+	by := (WindowHeight / 2) - 22
 	SButtons[BtnEndTurn], bw = CreateButton(&btn, "End turn", bx, by)
 	bx += bw
 	SButtons[BtnShowBuildings], bw = CreateButton(&btn, "Buildings", bx, by)
@@ -833,26 +946,28 @@ func defs() {
 	}
 
 	tileSprites = make(map[string]TileSprite)
-	tileSprites["grass"] = LoadTileSprite(filepath.Join("img", "tiles", "grass"), 2)
-	tileSprites["water"] = LoadTileSprite(filepath.Join("img", "tiles", "water"), 0)
+	tileSprites["grass"] = LoadTileSprite(filepath.Join("img", "tiles", "grass"))
+	tileSprites["water"] = LoadTileSprite(filepath.Join("img", "tiles", "water"))
 }
 
 func Init() {
 	defs()
 	LoadFonts()
 	LoadSprites()
+	CreateLayers()
 	CreateUi()
 	world = CreateWorld()
 }
 
 func main() {
 	fmt.Println("Starting...")
-
-	Init()
+	initialised = false
+	renderTilesLayer = true
+	renderThingsLayer = true
 
 	// do this with a function. it's to make the screen size fit the map
 	//  (assuming 8x8) like minesweeper
-	ebiten.SetWindowSize(WWidth, WHeight)
+	ebiten.SetWindowSize(WindowWidth, WindowHeight)
 	ebiten.SetWindowTitle("Kingdom")
 
 	// mainly for my development

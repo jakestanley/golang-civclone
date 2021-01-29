@@ -1,4 +1,5 @@
-- dynamic tile heights (render sides behind first scale and render line and flats behind) - IN PROGRESS
+Easy
+
 - dynamic tile colouring - no manually colouring different tiles (shading can be automated too)
 - dynamic tile rendering (arbitrary width and height)
 - water tiles move up and down like waves (nice effect)
@@ -9,3 +10,11 @@
     - i.e two adjacent constructions to one city should receive half progress
 - monolith spawns
 - BALLS BALLS BALLS functionality
+- dynamic tile heights (render sides behind first scale and render line and flats behind) - DONE
+
+Medium
+- auto assign jobs/roles
+- births
+
+Hard
+- tile shadows

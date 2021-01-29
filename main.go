@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 
@@ -21,7 +22,13 @@ import (
 type Game struct{}
 
 type Citizen struct {
-	age int
+	name      string
+	age       int
+	gender    string
+	education int
+	genetics  int
+	// TODO home settlement, tile on last turn
+	// home settlement could provide a buff to effort
 }
 
 // UI elements
@@ -30,6 +37,20 @@ type UiSprite struct {
 	// middle MUST be one pixel wide for text fit scaling
 	middle *ebiten.Image
 	right  *ebiten.Image
+}
+
+// likely need to use embedding for dynamic UIs
+type SettlementUi struct {
+	// window image
+	canvas *ebiten.Image
+	// position of the window
+	px, py float64
+	// selected settlement coordinates
+	sx, sy int
+	// has the user got something selected?
+	focused bool
+	// has there been a change or has the window just spawned? if so, redraw
+	redraw bool
 }
 
 type Button struct {
@@ -115,6 +136,13 @@ type World struct {
 	redraw         bool
 }
 
+type Research struct {
+	// Husbandry when researched, allows moving a citizen to an adjacent tile without having to wait a turn
+	Husbandry bool
+	// Transit when researched, allows moving a citizen to any tile without having to wait a turn
+	Transit bool
+}
+
 const (
 	// MaxMemAlloc maximum MiB we want to allow to be allocated before we crash the program
 	MaxMemAlloc = 128
@@ -151,9 +179,10 @@ var (
 	thingsLayer *ebiten.Image
 
 	// ui stuff
-	fontTitle  font.Face
-	fontDetail font.Face
-	btn        UiSprite
+	fontTitle    font.Face
+	fontDetail   font.Face
+	btn          UiSprite
+	settlementUi SettlementUi
 
 	// actual vars now
 	sHeight   int
@@ -163,6 +192,7 @@ var (
 	year      int = 1
 	epoch     int = 0
 	world     World
+	research  Research
 	north     *ebiten.Image
 
 	// ctx and cty are the coordinate of the tile that the cursor is on
@@ -173,6 +203,8 @@ var (
 	mtx                 int  = -1
 	mty                 int  = -1
 	validMouseSelection bool = false
+	focusedSettlementX  int  = -1
+	focusedSettlementY  int  = -1
 
 	messages MessageQueue
 
@@ -186,6 +218,7 @@ var (
 	AButtons []*Button
 
 	// debugging
+	debugprint        bool
 	renderTilesLayer  bool
 	renderThingsLayer bool
 )
@@ -316,6 +349,31 @@ func UpdateDrawLocations() {
 	}
 }
 
+func DefocusSettlement() {
+	if settlementUi.focused {
+		settlementUi.focused = false
+		fmt.Println(fmt.Sprintf("Defocused"))
+	}
+}
+
+// TODO consider making this "select settlement or something. focused might be a bit ambiguous"
+// 	also, it might not be a settlement, it could be a building. Settlements are also buildings
+// 	maybe it should even be focus tile? could then remove the buildings button...
+// 	buildings could pop up on an empty tile?
+func FocusSettlement(x, y int) {
+	if settlementUi.focused && settlementUi.sx == x && settlementUi.sy == y {
+		// do nothing
+		return
+	}
+	// TODO more UI logic?
+	// TODO move UI with mouse
+	settlementUi.sx = x
+	settlementUi.sy = y
+	settlementUi.focused = true
+	settlementUi.redraw = true
+	fmt.Println(fmt.Sprintf("Focused %d,%d", x, y))
+}
+
 // UpdateInputs calls appropriate functions when inputs detected
 func UpdateInputs() {
 
@@ -343,7 +401,11 @@ func UpdateInputs() {
 		if validMouseSelection && world.tiles[mtx][mty].kind == TGrass {
 
 			if world.settlementGrid[mtx][mty].kind.nothing {
+				// TODO instead spawn the buildings UI
 				world.settlementGrid[mtx][mty] = world.CreateSettlement(settlementKinds["VILLAGE"])
+			} else {
+				DefocusSettlement()
+				FocusSettlement(mtx, mty)
 			}
 		}
 	}
@@ -361,6 +423,11 @@ func UpdateInputs() {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) {
 		// TODO destroy settlement. hopefully go gc is good
 		world.settlementGrid[mtx][mty] = &nothing
+	}
+
+	// move cursor north
+	if inpututil.IsKeyJustPressed(ebiten.KeyQ) {
+		DefocusSettlement()
 	}
 
 	// move cursor north
@@ -391,7 +458,12 @@ func UpdateInputs() {
 		os.Exit(0)
 	}
 
+	// TODO ignore tile hover/click if blocked by a UI
+
 	// debugging
+	if inpututil.IsKeyJustPressed(ebiten.KeyGraveAccent) {
+		debugprint = !debugprint
+	}
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
 		renderTilesLayer = !renderTilesLayer
 		if renderTilesLayer {
@@ -651,9 +723,13 @@ func DrawLayers(screen *ebiten.Image) {
 	thingsLayer.Clear()
 }
 
+func (c *Citizen) ToString() string {
+	return fmt.Sprintf("%s, %s, %d, no job", c.name, c.gender, c.age)
+}
+
 // DrawButton handles text and button sizing and positioning
 // TODO button state variable
-
+// CreateButton appends it to the global buttons list, returns the button and the text width (TODO maybe make this whole button width?)
 func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 
 	b := Button{
@@ -671,7 +747,7 @@ func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 	return &b, w
 }
 
-func (b *Button) DrawButton(screen *ebiten.Image) {
+func (b *Button) DrawButton(layer *ebiten.Image) {
 
 	// TODO cache state so we don't need to recalculate if there are no changes.
 	// 	use redraw variable for this and a member function for move or update string
@@ -684,7 +760,7 @@ func (b *Button) DrawButton(screen *ebiten.Image) {
 		op.ColorM.Scale(0.8, 0.8, 0.8, 1)
 	}
 	op.GeoM.Translate(float64(b.x), float64(b.y))
-	screen.DrawImage(btn.left, op)
+	layer.DrawImage(btn.left, op)
 	w, _ := btn.left.Size()
 
 	op = &ebiten.DrawImageOptions{}
@@ -693,7 +769,7 @@ func (b *Button) DrawButton(screen *ebiten.Image) {
 	}
 	op.GeoM.Scale(float64(strWidth), 1)
 	op.GeoM.Translate(float64(b.x+w), float64(b.y))
-	screen.DrawImage(btn.middle, op)
+	layer.DrawImage(btn.middle, op)
 
 	op = &ebiten.DrawImageOptions{}
 	if b.hover {
@@ -701,10 +777,10 @@ func (b *Button) DrawButton(screen *ebiten.Image) {
 	}
 	bx := b.x + w + strWidth
 	op.GeoM.Translate(float64(bx), float64(b.y))
-	screen.DrawImage(btn.right, op)
+	layer.DrawImage(btn.right, op)
 
 	// draw button text
-	text.Draw(screen, b.content, fontDetail, b.x+w, b.y+12, color.White)
+	text.Draw(layer, b.content, fontDetail, b.x+w, b.y+12, color.White)
 
 	// TODO write unit tests for this
 	b.bounds = image.Rectangle{
@@ -719,7 +795,6 @@ func (b *Button) DrawButton(screen *ebiten.Image) {
 	}
 }
 
-// TODO message display
 func DrawUi(screen *ebiten.Image) {
 
 	// the font should totally upgrade with each age
@@ -735,11 +810,59 @@ func DrawUi(screen *ebiten.Image) {
 	text.Draw(screen, fmt.Sprintf("Citizens: %d", civs), fontDetail, 8, 30, color.White)
 	text.Draw(screen, fmt.Sprintf("Year: %d", year), fontDetail, 8, 44, color.White)
 
-	for i := 0; i < len(AllButtons); i++ {
-		AllButtons[i].DrawButton(screen)
+	for _, v := range SButtons {
+		v.DrawButton(screen)
 	}
 	// newer messages should be at the bottom of the screen and older messages should fade
 	messages.DrawMessages(screen)
+
+}
+
+// TODO floating window "supertype"
+func DrawSettlementUi(screen *ebiten.Image) {
+	if settlementUi.focused && settlementUi.redraw {
+
+		width := 300
+		height := 200
+		settlement := world.settlementGrid[settlementUi.sx][settlementUi.sy]
+
+		canvas := ebiten.NewImage(width, height)
+		canvas.Fill(color.Black)
+
+		titleText := "Manage Settlement"
+		titleWidth := text.BoundString(fontTitle, titleText).Dx()
+		text.Draw(canvas, titleText, fontTitle, width/2-titleWidth/2, 20, color.White)
+
+		x := 4
+		y := 40
+
+		citizensText := fmt.Sprintf("Citizens: %d", len(settlement.citizens))
+		text.Draw(canvas, citizensText, fontDetail, x, y, color.White)
+
+		for i := 0; i < len(settlement.citizens); i++ {
+			y += 16
+			citizenText := settlement.citizens[i].ToString()
+			text.Draw(canvas, citizenText, fontDetail, x, y, color.White)
+		}
+
+		// how i create buttons is a bit of a problem actually. i have already set the position, but i don't have the button size yet
+		b, _ := CreateButton(&btn, "BALLS BALLS BALLS", x, height-20)
+		b.DrawButton(canvas)
+
+		settlementUi.canvas = canvas
+	}
+
+	// not necessary every frame. maybe cache and use a moved parameter?
+	// 	but it's pretty cheap for now
+	ops := &ebiten.DrawImageOptions{}
+	ops.ColorM.Scale(1, 1, 1, 0.95)
+	ops.GeoM.Translate(settlementUi.px, settlementUi.py)
+
+	if settlementUi.focused {
+		screen.DrawImage(settlementUi.canvas, ops)
+	}
+
+	settlementUi.redraw = false
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -750,13 +873,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	DrawThings(thingsLayer)
 	DrawLayers(screen)
 	DrawUi(screen)
+	DrawSettlementUi(screen)
 
 	// TODO if debug
 	// TODO don't calculate mouse pos on the draw call. this is for debugging only
 	mx, my := ebiten.CursorPosition()
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse pos: %d,%d", mx, my), 16, 60)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse on tile: %d, %d", mtx, mty), 16, 80)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Cursor on tile: %d, %d", ctx, cty), 16, 100)
+	if debugprint {
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse pos: %d,%d", mx, my), 16, 60)
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse on tile: %d, %d", mtx, mty), 16, 80)
+	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
@@ -772,6 +897,14 @@ func CreateTile(kind int, height int, liquid bool) Tile {
 		moved:    true,
 		height:   height,
 		liquid:   liquid,
+	}
+}
+
+func CreateResearch() Research {
+
+	return Research{
+		Husbandry: false,
+		Transit:   false,
 	}
 }
 
@@ -811,9 +944,25 @@ func CreateSpawnSettlement() *Settlement {
 	sk := settlementKinds["VILLAGE"]
 	c := []Citizen{}
 
-	for i := 0; i < sk.popcap; i++ {
+	for i := 0; i < sk.popcap/2; i++ {
+
+		var gender string
+		var name string
+
+		if i%2 == 0 {
+			gender = "female"
+			// right exclusive, neat
+			name = FirstNamesFemale[rand.Intn(len(FirstNamesFemale))]
+		} else {
+			gender = "male"
+			name = FirstNamesMale[rand.Intn(len(FirstNamesMale))]
+		}
+
 		c = append(c, Citizen{
-			age: 18,
+			name:     name,
+			gender:   gender,
+			genetics: 100,
+			age:      18,
 		})
 	}
 
@@ -853,6 +1002,15 @@ func CreateLayers() {
 }
 
 func CreateUi() {
+
+	settlementUi = SettlementUi{
+		px:      16,
+		py:      16,
+		sx:      -1,
+		sy:      -1,
+		redraw:  true,
+		focused: false,
+	}
 
 	messages = CreateMessages()
 	SButtons = make(map[string]*Button)
@@ -916,6 +1074,8 @@ func LoadSprites() {
 // because we can't use consts for stuff like this
 func defs() {
 
+	// TODO move this into the vars block.
+	// 	you can't declare const arrays but can have var arrays in there
 	epochs = []string{
 		"Neolithic Age", "Roman Age", "Classical Age",
 		"Age of Steam", "Modern Age", "Transhuman Age",
@@ -955,12 +1115,16 @@ func defs() {
 }
 
 func Init() {
+	debugprint = false
 	defs()
 	LoadFonts()
 	LoadSprites()
 	CreateLayers()
 	CreateUi()
+
+	// new game
 	world = CreateWorld()
+	research = CreateResearch()
 }
 
 func main() {

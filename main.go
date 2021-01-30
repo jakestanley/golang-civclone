@@ -1033,10 +1033,10 @@ func GetAvailableJobs(x, y int) []*Job {
 	return jobs
 }
 
-func (ui *SettlementUi) EnableJobSelection() {
+func (ui *SettlementUi) DisableJobSelection(disabled bool) {
 	for i := 0; i < len(settlementUi.selectJobButtons); i++ {
 		j := settlementUi.selectJobButtons[i]
-		j.disabled = false
+		j.disabled = disabled
 		j.SetRedraw()
 	}
 }
@@ -1072,11 +1072,16 @@ func CreateSettlementUi() {
 		b.executable = true
 		idx := i
 		b.exec = func() string {
-			b.selected = true
+			b.selected = !b.selected
+			if !b.selected {
+				settlementUi.selectedCtz = nil
+			} else {
+				settlementUi.selectedCtz = &settlement.citizens[idx]
+			}
 			b.SetRedraw()
-			settlementUi.selectedCtz = &settlement.citizens[idx]
-			settlementUi.EnableJobSelection()
-			return fmt.Sprintf("Selected citizen: %s", settlementUi.selectedCtz.name)
+			settlementUi.DisableJobSelection(!b.selected)
+
+			return "Selected citizen"
 		}
 		b.SetWindow(settlementUi.window)
 		settlementUi.selectCtzButtons = append(settlementUi.selectCtzButtons, b)

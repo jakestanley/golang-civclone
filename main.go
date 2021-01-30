@@ -73,6 +73,7 @@ type SettlementUi struct {
 
 type Button struct {
 	redraw     bool
+	selected   bool
 	content    string
 	x, y       int
 	width      int
@@ -833,6 +834,7 @@ func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 		y:         y,
 		img:       img,
 		hover:     false,
+		selected:  false,
 		destroy:   false,
 		disabled:  false,
 		redraw:    true,
@@ -913,6 +915,10 @@ func (b *Button) DrawButton(layer *ebiten.Image) {
 
 		// combine image and text
 		ops = &ebiten.DrawImageOptions{}
+		if b.selected {
+			ops.ColorM.Scale(1, 2, 0, 1)
+		}
+
 		if b.hover && !b.disabled {
 			ops.ColorM.Scale(0.8, 0.8, 0.8, 1)
 		}
@@ -1031,8 +1037,7 @@ func (ui *SettlementUi) EnableJobSelection() {
 	for i := 0; i < len(settlementUi.selectJobButtons); i++ {
 		j := settlementUi.selectJobButtons[i]
 		j.disabled = false
-		j.redraw = true
-		j.window.redraw = true
+		j.SetRedraw()
 	}
 }
 
@@ -1067,6 +1072,8 @@ func CreateSettlementUi() {
 		b.executable = true
 		idx := i
 		b.exec = func() string {
+			b.selected = true
+			b.SetRedraw()
 			settlementUi.selectedCtz = &settlement.citizens[idx]
 			settlementUi.EnableJobSelection()
 			return fmt.Sprintf("Selected citizen: %s", settlementUi.selectedCtz.name)

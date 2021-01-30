@@ -44,7 +44,7 @@ type Window struct {
 	// dimensions
 	width  int
 	height int
-	// window image. TODO window type?
+	// window image
 	canvas *ebiten.Image
 	// position
 	px, py float64
@@ -1162,8 +1162,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
+
 	sWidth = outsideWidth / 2
 	sHeight = outsideHeight / 2
+
+	CreateLayers(sWidth, sHeight)
+
 	return sWidth, sHeight
 }
 
@@ -1272,12 +1276,11 @@ func (w *World) CreateSettlements() {
 	w.settlementGrid = grid
 }
 
-// TODO move this into layout
-func CreateLayers() {
+func CreateLayers(sWidth, sHeight int) {
 
-	tilesLayer = ebiten.NewImage(WindowWidth/2, WindowHeight/2)
-	thingsLayer = ebiten.NewImage(WindowWidth/2, WindowHeight/2)
-	uiLayer = ebiten.NewImage(WindowWidth/2, WindowHeight/2)
+	tilesLayer = ebiten.NewImage(sWidth, sHeight)
+	thingsLayer = ebiten.NewImage(sWidth, sHeight)
+	uiLayer = ebiten.NewImage(sWidth, sHeight)
 }
 
 func CreateUi() {
@@ -1395,7 +1398,6 @@ func Init() {
 	defs()
 	LoadFonts()
 	LoadSprites()
-	CreateLayers()
 	CreateUi()
 
 	// new game

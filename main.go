@@ -61,8 +61,12 @@ type SettlementUi struct {
 	focused bool
 	// has there been a change or has the window just spawned? if so, redraw
 	redraw bool
-	// buttons
-	buttons []*Button
+	// selectCtzButtons
+	selectCtzButtons []*Button
+	selectedCtz      *Citizen
+	// selectJobButtons
+	selectJobButtons []*Button
+	selectedJob      *Job
 	// jobs
 	jobs []*Job
 }
@@ -79,6 +83,7 @@ type Button struct {
 	window     *Window
 	executable bool
 	exec       func() string
+	destroy    bool
 }
 
 type Message struct {
@@ -267,6 +272,22 @@ func IsTileSelectionValid() bool {
 
 // ResetFrameState is a handy function that will reset any variables that should not persist between updates
 func ResetFrameState() {
+	// remove any buttons marked for removal
+	for i := 0; i < len(AllButtons); i++ {
+		if AllButtons[i].destroy {
+			// this will not preserve order. hope that's ok
+			if len(AllButtons) > 1 {
+				last := len(AllButtons) - 1
+				// move the last button in the array to the index of the one we want to remove
+				AllButtons[i] = AllButtons[last]
+				// remove the last element of the array
+				AllButtons = AllButtons[:last]
+			} else {
+				// if there will be no elements left in the array, just create a new array
+				AllButtons = []*Button{}
+			}
+		}
+	}
 	validMouseSelection = false
 	mtx = -1
 	mty = -1
@@ -381,8 +402,7 @@ func UpdateDrawLocations() {
 
 func DefocusSettlement() {
 	if settlementUi.focused {
-		settlementUi.focused = false
-		fmt.Println(fmt.Sprintf("Defocused"))
+		ClearSettlementUi()
 	}
 }
 
@@ -815,10 +835,11 @@ func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 	b := Button{
 		content: str,
 		// TODO remove coordinates and move into draw cycle
-		x:     x,
-		y:     y,
-		img:   img,
-		hover: false,
+		x:       x,
+		y:       y,
+		img:     img,
+		hover:   false,
+		destroy: false,
 	}
 
 	// TODO calculate the text padding/button side size instead of using a magic number
@@ -985,12 +1006,48 @@ func GetAvailableJobs(x, y int) []*Job {
 	return jobs
 }
 
+func ClearSettlementUi() {
+	settlementUi.focused = false
+	settlementUi.selectedCtz = nil
+	// TODO "delete" the buttons they still linger after ui is closed
+	// 	you can't actually delete stuff in go. that's what the GC is for.
+	// 	you'll have to remove them from AllButtons
+	// TODO may also need to do this in update
+	for i := 0; i < len(settlementUi.selectCtzButtons); i++ {
+		settlementUi.selectCtzButtons[i].destroy = true
+	}
+	for i := 0; i < len(settlementUi.selectJobButtons); i++ {
+		settlementUi.selectJobButtons[i].destroy = true
+	}
+	settlementUi.selectCtzButtons = []*Button{}
+	settlementUi.selectJobButtons = []*Button{}
+	fmt.Println(fmt.Sprintf("Defocused"))
+}
+
 func CreateSettlementUi() {
 
 	settlementUi.focused = true
 	settlementUi.redraw = true
-	settlementUi.buttons = []*Button{}
+	settlementUi.selectCtzButtons = []*Button{}
+	settlementUi.selectJobButtons = []*Button{}
 
+	// citizens
+	settlement := world.settlementGrid[settlementUi.sx][settlementUi.sy]
+	for i := 0; i < len(settlement.citizens); i++ {
+		citizenText := settlement.citizens[i].ToTerseString()
+
+		b, _ := CreateButton(&btn, citizenText, 0, 0)
+		b.executable = true
+		idx := i
+		b.exec = func() string {
+			settlementUi.selectedCtz = &settlement.citizens[idx]
+			return fmt.Sprintf("Selected citizen: %s", settlementUi.selectedCtz.name)
+		}
+		b.SetWindow(settlementUi.window)
+		settlementUi.selectCtzButtons = append(settlementUi.selectCtzButtons, b)
+	}
+
+	// jobs
 	jobs := GetAvailableJobs(settlementUi.sx, settlementUi.sy)
 
 	for j := 0; j < len(jobs); j++ {
@@ -1000,11 +1057,13 @@ func CreateSettlementUi() {
 		b, _ := CreateButton(&btn, jobsText, 0, 0)
 		b.executable = true
 		b.exec = func() string {
-			return jobsText
+			if settlementUi.selectedCtz == nil {
+				return "No citizen selected"
+			}
+			return fmt.Sprintf("Assigned job '%s' to %s", jobsText, settlementUi.selectedCtz.name)
 		}
-		b.windowed = true
-		b.window = settlementUi.window
-		settlementUi.buttons = append(settlementUi.buttons, b)
+		b.SetWindow(settlementUi.window)
+		settlementUi.selectJobButtons = append(settlementUi.selectJobButtons, b)
 	}
 
 	// might not be necessary to store this
@@ -1031,16 +1090,22 @@ func DrawSettlementUi(screen *ebiten.Image) {
 		titleWidth := text.BoundString(fontTitle, titleText).Dx()
 		text.Draw(canvas, titleText, fontTitle, width/2-titleWidth/2, 20, color.White)
 
+		// draw citizens UI
 		x := 4
 		y := 40
 
-		citizensText := fmt.Sprintf("Citizens: %d", len(settlement.citizens))
+		citizensText := fmt.Sprintf("Citizens (%d)", len(settlement.citizens))
 		text.Draw(canvas, citizensText, fontDetail, x, y, color.White)
 
-		for i := 0; i < len(settlement.citizens); i++ {
-			y += 16
-			citizenText := settlement.citizens[i].ToTerseString()
-			text.Draw(canvas, citizenText, fontDetail, x, y, color.White)
+		y += 10
+		if len(settlementUi.selectCtzButtons) == 0 {
+
+			text.Draw(canvas, "No citizens", fontDetail, x, y, color.White)
+		} else {
+			for i := 0; i < len(settlementUi.selectCtzButtons); i++ {
+				settlementUi.selectCtzButtons[i].DrawButtonAt(canvas, x, y)
+				y += 20
+			}
 		}
 
 		// no use for the BALLS button right now
@@ -1048,8 +1113,6 @@ func DrawSettlementUi(screen *ebiten.Image) {
 		b.DrawButton(canvas)
 
 		// draw jobs UI
-		// 	figure out jobs in update cycle
-
 		x = 100
 		y = 40
 
@@ -1060,8 +1123,8 @@ func DrawSettlementUi(screen *ebiten.Image) {
 
 			text.Draw(canvas, "No jobs", fontDetail, x, y, color.White)
 		} else {
-			for i := 0; i < len(settlementUi.buttons); i++ {
-				settlementUi.buttons[i].DrawButtonAt(canvas, x, y)
+			for i := 0; i < len(settlementUi.selectJobButtons); i++ {
+				settlementUi.selectJobButtons[i].DrawButtonAt(canvas, x, y)
 				y += 20
 			}
 		}

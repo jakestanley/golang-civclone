@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 	"github.com/hajimehoshi/ebiten/inpututil"
@@ -39,27 +40,43 @@ type UiSprite struct {
 	right  *ebiten.Image
 }
 
+type Window struct {
+	// dimensions
+	width  int
+	height int
+	// window image. TODO window type?
+	canvas *ebiten.Image
+	// position
+	px, py float64
+	// has there been a change or has the window just spawned? if so, redraw
+	redraw bool
+}
+
 // likely need to use embedding for dynamic UIs
 type SettlementUi struct {
-	// window image
-	canvas *ebiten.Image
-	// position of the window
-	px, py float64
+	window *Window
 	// selected settlement coordinates
 	sx, sy int
 	// has the user got something selected?
 	focused bool
 	// has there been a change or has the window just spawned? if so, redraw
 	redraw bool
+	// buttons
+	buttons []*Button
+	// jobs
+	jobs []*Job
 }
 
 type Button struct {
-	redraw  bool
-	content string
-	x, y    int
-	hover   bool // should default to false
-	img     *UiSprite
-	bounds  image.Rectangle
+	redraw   bool
+	content  string
+	x, y     int
+	width    int
+	hover    bool // should default to false
+	img      *UiSprite
+	bounds   image.Rectangle
+	windowed bool
+	window   *Window
 }
 
 type Message struct {
@@ -125,6 +142,16 @@ type Settlement struct {
 	progress  float64
 	completed bool
 	citizens  []Citizen
+}
+
+type Work struct {
+	x, y int
+}
+
+type Job struct {
+	x, y int
+	kind string
+	work *Work
 }
 
 type World struct {
@@ -360,18 +387,22 @@ func DefocusSettlement() {
 // 	also, it might not be a settlement, it could be a building. Settlements are also buildings
 // 	maybe it should even be focus tile? could then remove the buildings button...
 // 	buildings could pop up on an empty tile?
-func FocusSettlement(x, y int) {
+// FocusSettlement returns true if a new settlement has come into focus
+func FocusSettlement(x, y int) bool {
 	if settlementUi.focused && settlementUi.sx == x && settlementUi.sy == y {
 		// do nothing
-		return
+		return false
 	}
 	// TODO more UI logic?
 	// TODO move UI with mouse
+	// maybe this should be a 2D array? or just jobButtons? idk
+
 	settlementUi.sx = x
 	settlementUi.sy = y
-	settlementUi.focused = true
-	settlementUi.redraw = true
+
 	fmt.Println(fmt.Sprintf("Focused %d,%d", x, y))
+
+	return true
 }
 
 // UpdateInputs calls appropriate functions when inputs detected
@@ -390,12 +421,27 @@ func UpdateInputs() {
 		// TODO remove if statement break if true (but not right now as still under development)
 		// button.hover = point.In(button.bounds)
 		if point.In(button.bounds) {
-			button.hover = true
+			// only run this logic if the button is not already hovered over
+			if !button.hover {
+				button.hover = true
+				// if the button belongs to a window, redraw that window
+				if button.windowed {
+					button.window.redraw = true
+				}
+			}
 		} else {
-			button.hover = false
+			// if we are hovering already, set hover to false and mark the window for redraw if necessary
+			if button.hover {
+				button.hover = false
+				if button.windowed {
+					button.window.redraw = true
+				}
+			}
+
 		}
 	}
 
+	justFocusedSettlement := false
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 
 		if validMouseSelection && world.tiles[mtx][mty].kind == TGrass {
@@ -405,9 +451,15 @@ func UpdateInputs() {
 				world.settlementGrid[mtx][mty] = world.CreateSettlement(settlementKinds["VILLAGE"])
 			} else {
 				DefocusSettlement()
-				FocusSettlement(mtx, mty)
+				justFocusedSettlement = FocusSettlement(mtx, mty)
 			}
 		}
+	}
+
+	if justFocusedSettlement {
+		CreateSettlementUi()
+	} else {
+		UpdateSettlementUi()
 	}
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
@@ -532,6 +584,8 @@ func (g *Game) Update() error {
 	UpdateDrawLocations()
 
 	UpdateInputs()
+
+	UpdateSettlementUi()
 
 	// we definitely shouldn't accept any user input after this until the next loop
 	HandleTurnEnd()
@@ -713,11 +767,15 @@ func DrawThings(layer *ebiten.Image) {
 func DrawLayers(screen *ebiten.Image) {
 
 	if renderTilesLayer {
+		// TODO if defocused, i.e saved or blocking dialogue, dim
 		screen.DrawImage(tilesLayer, &ebiten.DrawImageOptions{})
 	}
 	if renderThingsLayer {
+		// TODO if defocused, i.e saved or blocking dialogue, dim
 		screen.DrawImage(thingsLayer, &ebiten.DrawImageOptions{})
 	}
+
+	// TODO UI layer....
 
 	// workaround for now
 	thingsLayer.Clear()
@@ -727,6 +785,11 @@ func (c *Citizen) ToString() string {
 	return fmt.Sprintf("%s, %s, %d, no job", c.name, c.gender, c.age)
 }
 
+func (c *Citizen) ToTerseString() string {
+	// %s for strings, %c for chars
+	return fmt.Sprintf("Citizen, %c%d", strings.ToUpper(c.gender)[0], c.age)
+}
+
 // DrawButton handles text and button sizing and positioning
 // TODO button state variable
 // CreateButton appends it to the global buttons list, returns the button and the text width (TODO maybe make this whole button width?)
@@ -734,19 +797,45 @@ func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 
 	b := Button{
 		content: str,
-		x:       x,
-		y:       y,
-		img:     img,
-		hover:   false,
+		// TODO remove coordinates and move into draw cycle
+		x:     x,
+		y:     y,
+		img:   img,
+		hover: false,
 	}
 
 	// TODO calculate the text padding/button side size instead of using a magic number
+	// 	i.e use &btn.left.Dx()...
 	w := text.BoundString(fontDetail, str).Dx() + 8
+	b.width = w
 
 	AllButtons = append(AllButtons, &b)
 	return &b, w
 }
 
+// SetWindow assigns a button to a window. Useful for redraw logic, i.e hover
+func (b *Button) SetWindow(window *Window) {
+	b.windowed = true
+	b.window = window
+}
+
+// DrawButtonAt draws button at given coordinates
+func (b *Button) DrawButtonAt(layer *ebiten.Image, x, y int) {
+
+	// oldX := b.x
+	// oldY := b.y
+
+	b.x = x
+	b.y = y
+
+	b.DrawButton(layer)
+
+	// b.x = oldX
+	// b.y = oldY
+}
+
+// DrawButton draws button at stored button coordinates. If you wish to
+// 	specify otherwise, use DrawButtonAt
 func (b *Button) DrawButton(layer *ebiten.Image) {
 
 	// TODO cache state so we don't need to recalculate if there are no changes.
@@ -761,36 +850,45 @@ func (b *Button) DrawButton(layer *ebiten.Image) {
 	}
 	op.GeoM.Translate(float64(b.x), float64(b.y))
 	layer.DrawImage(btn.left, op)
-	w, _ := btn.left.Size()
+	lw, _ := btn.left.Size()
+	rw, _ := btn.right.Size()
 
 	op = &ebiten.DrawImageOptions{}
 	if b.hover {
 		op.ColorM.Scale(0.8, 0.8, 0.8, 1)
 	}
 	op.GeoM.Scale(float64(strWidth), 1)
-	op.GeoM.Translate(float64(b.x+w), float64(b.y))
+	op.GeoM.Translate(float64(b.x+lw), float64(b.y))
 	layer.DrawImage(btn.middle, op)
 
 	op = &ebiten.DrawImageOptions{}
 	if b.hover {
 		op.ColorM.Scale(0.8, 0.8, 0.8, 1)
 	}
-	bx := b.x + w + strWidth
-	op.GeoM.Translate(float64(bx), float64(b.y))
+	rx := b.x + lw + strWidth
+	op.GeoM.Translate(float64(rx), float64(b.y))
 	layer.DrawImage(btn.right, op)
 
 	// draw button text
-	text.Draw(layer, b.content, fontDetail, b.x+w, b.y+12, color.White)
+	text.Draw(layer, b.content, fontDetail, b.x+lw, b.y+12, color.White)
 
 	// TODO write unit tests for this
+	windowOffsetX := 0
+	windowOffsetY := 0
+
+	if b.windowed {
+		windowOffsetX += int(b.window.px)
+		windowOffsetY += int(b.window.py)
+	}
+
 	b.bounds = image.Rectangle{
 		image.Point{
-			b.x,
-			b.y,
+			b.x + windowOffsetX,
+			b.y + windowOffsetY,
 		},
 		image.Point{
-			bx + btn.right.Bounds().Bounds().Size().X,
-			b.y + btn.right.Bounds().Bounds().Size().Y,
+			b.x + windowOffsetX + lw + strWidth + rw,
+			b.y + windowOffsetY + btn.right.Bounds().Bounds().Size().Y,
 		},
 	}
 }
@@ -818,12 +916,89 @@ func DrawUi(screen *ebiten.Image) {
 
 }
 
+func GetAvailableJobs(x, y int) []*Job {
+
+	// TODO don't forget array bounds
+	works := make(map[string]*Work)
+	works["here"] = &Work{x: x, y: y}
+	works["north"] = &Work{x: x - 1, y: y}
+	works["east"] = &Work{x: x, y: y + 1}
+	works["south"] = &Work{x: x + 1, y: y}
+	works["west"] = &Work{x: x, y: y - 1}
+
+	// TODO jobs type and jobs list (assigned, etc)
+	jobs := []*Job{}
+	here := world.settlementGrid[x][y]
+
+	// if unfinished settlement, no jobs should be available
+	if !here.completed {
+		return jobs
+	}
+
+	// TODO get assigned citizens as count
+	// TODO tool tip of job info
+	// TODO warn on excess effort
+	for k, v := range works {
+
+		settlement := world.settlementGrid[v.x][v.y]
+
+		if settlement.kind.nothing {
+			continue
+		}
+
+		if settlement.completed {
+
+			// don't show move for "here"
+			if v.x != x || v.y != y {
+				jobs = append(jobs, &Job{
+					kind: fmt.Sprintf("move %s", k),
+					work: v,
+				})
+			}
+		} else if v.x != x || v.y != y {
+			jobs = append(jobs, &Job{
+				kind: fmt.Sprintf("build %s", k),
+				work: v,
+			})
+		}
+	}
+
+	return jobs
+}
+
+func CreateSettlementUi() {
+
+	settlementUi.focused = true
+	settlementUi.redraw = true
+	settlementUi.buttons = []*Button{}
+
+	jobs := GetAvailableJobs(settlementUi.sx, settlementUi.sy)
+
+	for j := 0; j < len(jobs); j++ {
+		jobsText := jobs[j].kind
+		// TODO button on click
+		// TODO make this a function of Window?
+		b, _ := CreateButton(&btn, jobsText, 0, 0)
+		b.windowed = true
+		b.window = settlementUi.window
+		settlementUi.buttons = append(settlementUi.buttons, b)
+	}
+
+	// might not be necessary to store this
+	settlementUi.jobs = jobs
+}
+
+func UpdateSettlementUi() {
+
+}
+
 // TODO floating window "supertype"
 func DrawSettlementUi(screen *ebiten.Image) {
-	if settlementUi.focused && settlementUi.redraw {
+	if settlementUi.focused && (settlementUi.redraw || settlementUi.window.redraw) {
 
-		width := 300
-		height := 200
+		width := settlementUi.window.width
+		height := settlementUi.window.height
+
 		settlement := world.settlementGrid[settlementUi.sx][settlementUi.sy]
 
 		canvas := ebiten.NewImage(width, height)
@@ -841,28 +1016,52 @@ func DrawSettlementUi(screen *ebiten.Image) {
 
 		for i := 0; i < len(settlement.citizens); i++ {
 			y += 16
-			citizenText := settlement.citizens[i].ToString()
+			citizenText := settlement.citizens[i].ToTerseString()
 			text.Draw(canvas, citizenText, fontDetail, x, y, color.White)
 		}
 
-		// how i create buttons is a bit of a problem actually. i have already set the position, but i don't have the button size yet
+		// no use for the BALLS button right now
 		b, _ := CreateButton(&btn, "BALLS BALLS BALLS", x, height-20)
 		b.DrawButton(canvas)
 
-		settlementUi.canvas = canvas
+		// draw jobs UI
+		// 	figure out jobs in update cycle
+
+		x = 100
+		y = 40
+
+		text.Draw(canvas, "Jobs", fontDetail, x, y, color.White)
+
+		y += 10
+		if len(settlementUi.jobs) == 0 {
+
+			text.Draw(canvas, "No jobs", fontDetail, x, y, color.White)
+		} else {
+			for i := 0; i < len(settlementUi.buttons); i++ {
+				settlementUi.buttons[i].DrawButtonAt(canvas, x, y)
+				y += 20
+			}
+		}
+
+		settlementUi.window.canvas = canvas
+
+		ops := &ebiten.DrawImageOptions{}
+		ops.ColorM.Scale(1, 1, 1, 0.95)
+		ops.GeoM.Translate(settlementUi.window.px, settlementUi.window.py)
 	}
 
-	// not necessary every frame. maybe cache and use a moved parameter?
-	// 	but it's pretty cheap for now
-	ops := &ebiten.DrawImageOptions{}
-	ops.ColorM.Scale(1, 1, 1, 0.95)
-	ops.GeoM.Translate(settlementUi.px, settlementUi.py)
-
 	if settlementUi.focused {
-		screen.DrawImage(settlementUi.canvas, ops)
+
+		// not necessary every frame. maybe cache and use a moved parameter?
+		// 	but it's pretty cheap for now
+		ops := &ebiten.DrawImageOptions{}
+		ops.ColorM.Scale(1, 1, 1, 0.95)
+		ops.GeoM.Translate(settlementUi.window.px, settlementUi.window.py)
+		screen.DrawImage(settlementUi.window.canvas, ops)
 	}
 
 	settlementUi.redraw = false
+	settlementUi.window.redraw = false
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -1004,8 +1203,13 @@ func CreateLayers() {
 func CreateUi() {
 
 	settlementUi = SettlementUi{
-		px:      16,
-		py:      16,
+		window: &Window{
+			width:  300,
+			height: 200,
+			px:     16,
+			py:     16,
+			redraw: true,
+		},
 		sx:      -1,
 		sy:      -1,
 		redraw:  true,

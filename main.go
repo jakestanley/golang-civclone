@@ -85,6 +85,7 @@ type Button struct {
 	executable bool
 	exec       func() string
 	destroy    bool
+	cachedImg  *ebiten.Image
 }
 
 type Message struct {
@@ -450,18 +451,13 @@ func UpdateInputs() {
 			// only run this logic if the button is not already hovered over
 			if !button.hover {
 				button.hover = true
-				// if the button belongs to a window, redraw that window
-				if button.windowed {
-					button.window.redraw = true
-				}
+				button.SetRedraw()
 			}
 		} else {
 			// if we are hovering already, set hover to false and mark the window for redraw if necessary
 			if button.hover {
 				button.hover = false
-				if button.windowed {
-					button.window.redraw = true
-				}
+				button.SetRedraw()
 			}
 
 		}
@@ -568,7 +564,6 @@ func HandleButtonClicks() {
 	for _, b := range AllButtons {
 		if b.hover {
 			if b.executable {
-				fmt.Println("button click")
 				fmt.Println(b.exec())
 			}
 		}
@@ -834,12 +829,14 @@ func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 	b := Button{
 		content: str,
 		// TODO remove coordinates and move into draw cycle
-		x:        x,
-		y:        y,
-		img:      img,
-		hover:    false,
-		destroy:  false,
-		disabled: false,
+		x:         x,
+		y:         y,
+		img:       img,
+		hover:     false,
+		destroy:   false,
+		disabled:  false,
+		redraw:    true,
+		cachedImg: nil,
 	}
 
 	// TODO calculate the text padding/button side size instead of using a magic number
@@ -855,6 +852,14 @@ func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 func (b *Button) SetWindow(window *Window) {
 	b.windowed = true
 	b.window = window
+}
+
+// SetRedraw instructs button and its window (if set) to redraw
+func (b *Button) SetRedraw() {
+	if b.windowed && b.window != nil {
+		b.window.redraw = true
+	}
+	b.redraw = true
 }
 
 // DrawButtonAt draws button at given coordinates
@@ -876,39 +881,52 @@ func (b *Button) DrawButtonAt(layer *ebiten.Image, x, y int) {
 // 	specify otherwise, use DrawButtonAt
 func (b *Button) DrawButton(layer *ebiten.Image) {
 
-	// TODO cache state so we don't need to recalculate if there are no changes.
-	// 	use redraw variable for this and a member function for move or update string
-	strRect := text.BoundString(fontDetail, b.content)
-	strWidth := strRect.Size().X
+	var totalWidth int
+	if b.redraw || b.cachedImg == nil {
 
-	// TODO reuse this so we don't have to set scale multiple times
-	op := &ebiten.DrawImageOptions{}
-	if b.hover {
-		op.ColorM.Scale(0.8, 0.8, 0.8, 1)
+		lw, lh := btn.left.Size()
+		strWidth := text.BoundString(fontDetail, b.content).Size().X
+		rw, _ := btn.right.Size() // what would be rh should be same size as lh
+
+		totalWidth = lw + strWidth + rw
+
+		buttonImg := ebiten.NewImage(totalWidth, lh)
+		textImg := ebiten.NewImage(totalWidth, lh)
+		b.cachedImg = ebiten.NewImage(totalWidth, lh)
+
+		ops := &ebiten.DrawImageOptions{}
+		buttonImg.DrawImage(btn.left, ops)
+
+		// scale 1px wide middle button body and translate
+		ops.GeoM.Scale(float64(strWidth), 1)
+		ops.GeoM.Translate(float64(lw), 0)
+		buttonImg.DrawImage(btn.middle, ops)
+
+		// create new ops to get rid of the scaling we just did
+		ops = &ebiten.DrawImageOptions{}
+		rx := lw + strWidth
+		ops.GeoM.Translate(float64(rx), 0)
+		buttonImg.DrawImage(btn.right, ops)
+
+		// draw button text
+		text.Draw(textImg, b.content, fontDetail, lw, 12, color.White)
+
+		// combine image and text
+		ops = &ebiten.DrawImageOptions{}
+		if b.hover && !b.disabled {
+			ops.ColorM.Scale(0.8, 0.8, 0.8, 1)
+		}
+		b.cachedImg.DrawImage(buttonImg, ops)
+
+		ops = &ebiten.DrawImageOptions{}
+		if b.disabled {
+			ops.ColorM.Scale(0.8, 0.8, 0.8, 1)
+		}
+		b.cachedImg.DrawImage(textImg, ops)
+		b.redraw = false
+	} else {
+		totalWidth, _ = b.cachedImg.Size()
 	}
-	op.GeoM.Translate(float64(b.x), float64(b.y))
-	layer.DrawImage(btn.left, op)
-	lw, _ := btn.left.Size()
-	rw, _ := btn.right.Size()
-
-	op = &ebiten.DrawImageOptions{}
-	if b.hover {
-		op.ColorM.Scale(0.8, 0.8, 0.8, 1)
-	}
-	op.GeoM.Scale(float64(strWidth), 1)
-	op.GeoM.Translate(float64(b.x+lw), float64(b.y))
-	layer.DrawImage(btn.middle, op)
-
-	op = &ebiten.DrawImageOptions{}
-	if b.hover {
-		op.ColorM.Scale(0.8, 0.8, 0.8, 1)
-	}
-	rx := b.x + lw + strWidth
-	op.GeoM.Translate(float64(rx), float64(b.y))
-	layer.DrawImage(btn.right, op)
-
-	// draw button text
-	text.Draw(layer, b.content, fontDetail, b.x+lw, b.y+12, color.White)
 
 	// TODO write unit tests for this
 	windowOffsetX := 0
@@ -919,13 +937,17 @@ func (b *Button) DrawButton(layer *ebiten.Image) {
 		windowOffsetY += int(b.window.py)
 	}
 
+	ops := &ebiten.DrawImageOptions{}
+	ops.GeoM.Translate(float64(b.x), float64(b.y))
+	layer.DrawImage(b.cachedImg, ops)
+
 	b.bounds = image.Rectangle{
 		image.Point{
 			b.x + windowOffsetX,
 			b.y + windowOffsetY,
 		},
 		image.Point{
-			b.x + windowOffsetX + lw + strWidth + rw,
+			b.x + windowOffsetX + totalWidth,
 			b.y + windowOffsetY + btn.right.Bounds().Bounds().Size().Y,
 		},
 	}
@@ -1005,6 +1027,15 @@ func GetAvailableJobs(x, y int) []*Job {
 	return jobs
 }
 
+func (ui *SettlementUi) EnableJobSelection() {
+	for i := 0; i < len(settlementUi.selectJobButtons); i++ {
+		j := settlementUi.selectJobButtons[i]
+		j.disabled = false
+		j.redraw = true
+		j.window.redraw = true
+	}
+}
+
 func ClearSettlementUi() {
 	settlementUi.focused = false
 	settlementUi.selectedCtz = nil
@@ -1037,6 +1068,7 @@ func CreateSettlementUi() {
 		idx := i
 		b.exec = func() string {
 			settlementUi.selectedCtz = &settlement.citizens[idx]
+			settlementUi.EnableJobSelection()
 			return fmt.Sprintf("Selected citizen: %s", settlementUi.selectedCtz.name)
 		}
 		b.SetWindow(settlementUi.window)
@@ -1098,7 +1130,8 @@ func DrawSettlementUi(screen *ebiten.Image) {
 			text.Draw(canvas, "No citizens", fontDetail, x, y, color.White)
 		} else {
 			for i := 0; i < len(settlementUi.selectCtzButtons); i++ {
-				settlementUi.selectCtzButtons[i].DrawButtonAt(canvas, x, y)
+				b := settlementUi.selectCtzButtons[i]
+				b.DrawButtonAt(canvas, x, y)
 				y += 20
 			}
 		}
@@ -1119,7 +1152,8 @@ func DrawSettlementUi(screen *ebiten.Image) {
 			text.Draw(canvas, "No jobs", fontDetail, x, y, color.White)
 		} else {
 			for i := 0; i < len(settlementUi.selectJobButtons); i++ {
-				settlementUi.selectJobButtons[i].DrawButtonAt(canvas, x, y)
+				j := settlementUi.selectJobButtons[i]
+				j.DrawButtonAt(canvas, x, y)
 				y += 20
 			}
 		}

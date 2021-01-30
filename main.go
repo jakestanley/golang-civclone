@@ -81,6 +81,7 @@ type Button struct {
 	bounds     image.Rectangle
 	windowed   bool
 	window     *Window
+	disabled   bool
 	executable bool
 	exec       func() string
 	destroy    bool
@@ -826,7 +827,6 @@ func (c *Citizen) ToTerseString() string {
 	return fmt.Sprintf("Citizen, %c%d", strings.ToUpper(c.gender)[0], c.age)
 }
 
-// DrawButton handles text and button sizing and positioning
 // TODO button state variable
 // CreateButton appends it to the global buttons list, returns the button and the text width (TODO maybe make this whole button width?)
 func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
@@ -834,11 +834,12 @@ func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 	b := Button{
 		content: str,
 		// TODO remove coordinates and move into draw cycle
-		x:       x,
-		y:       y,
-		img:     img,
-		hover:   false,
-		destroy: false,
+		x:        x,
+		y:        y,
+		img:      img,
+		hover:    false,
+		destroy:  false,
+		disabled: false,
 	}
 
 	// TODO calculate the text padding/button side size instead of using a magic number
@@ -1050,6 +1051,7 @@ func CreateSettlementUi() {
 		// TODO make this a function of Window?
 		b, _ := CreateButton(&btn, jobsText, 0, 0)
 		b.executable = true
+		b.disabled = true
 		b.exec = func() string {
 			if settlementUi.selectedCtz == nil {
 				return "No citizen selected"

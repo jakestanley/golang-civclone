@@ -204,6 +204,7 @@ var (
 	// world images
 	tilesLayer  *ebiten.Image
 	thingsLayer *ebiten.Image
+	uiLayer     *ebiten.Image
 
 	// ui stuff
 	fontTitle    font.Face
@@ -693,6 +694,7 @@ func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype st
 func DrawWorld(layer *ebiten.Image, world *World) {
 
 	// don't redraw if map doesn't change between frames
+	// layer.Clear()
 
 	// north is top left
 	// might want to store this layer globally or something in between frames and reuse it
@@ -739,6 +741,8 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 
 func DrawThings(layer *ebiten.Image) {
 
+	layer.Clear()
+
 	for x := 0; x < len(world.settlementGrid); x++ {
 		for y := 0; y < len(world.settlementGrid[x]); y++ {
 			if !world.settlementGrid[x][y].kind.nothing {
@@ -774,11 +778,7 @@ func DrawLayers(screen *ebiten.Image) {
 		// TODO if defocused, i.e saved or blocking dialogue, dim
 		screen.DrawImage(thingsLayer, &ebiten.DrawImageOptions{})
 	}
-
-	// TODO UI layer....
-
-	// workaround for now
-	thingsLayer.Clear()
+	screen.DrawImage(uiLayer, &ebiten.DrawImageOptions{})
 }
 
 func (c *Citizen) ToString() string {
@@ -893,10 +893,12 @@ func (b *Button) DrawButton(layer *ebiten.Image) {
 	}
 }
 
-func DrawUi(screen *ebiten.Image) {
+func DrawUi(layer *ebiten.Image) {
+
+	layer.Clear()
 
 	// the font should totally upgrade with each age
-	text.Draw(screen, epochs[epoch], fontTitle, 8, 16, color.White)
+	text.Draw(layer, epochs[epoch], fontTitle, 8, 16, color.White)
 
 	// smaller font for more detailed information
 	// TODO cache this value in update
@@ -905,14 +907,14 @@ func DrawUi(screen *ebiten.Image) {
 	for i := 0; i < len(world.settlementList); i++ {
 		civs += len(world.settlementList[i].citizens)
 	}
-	text.Draw(screen, fmt.Sprintf("Citizens: %d", civs), fontDetail, 8, 30, color.White)
-	text.Draw(screen, fmt.Sprintf("Year: %d", year), fontDetail, 8, 44, color.White)
+	text.Draw(layer, fmt.Sprintf("Citizens: %d", civs), fontDetail, 8, 30, color.White)
+	text.Draw(layer, fmt.Sprintf("Year: %d", year), fontDetail, 8, 44, color.White)
 
 	for _, v := range SButtons {
-		v.DrawButton(screen)
+		v.DrawButton(layer)
 	}
 	// newer messages should be at the bottom of the screen and older messages should fade
-	messages.DrawMessages(screen)
+	messages.DrawMessages(layer)
 
 }
 
@@ -1070,9 +1072,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	DrawWorld(tilesLayer, &world)
 	DrawThings(thingsLayer)
+	DrawUi(uiLayer)
+	DrawSettlementUi(uiLayer)
 	DrawLayers(screen)
-	DrawUi(screen)
-	DrawSettlementUi(screen)
 
 	// TODO if debug
 	// TODO don't calculate mouse pos on the draw call. this is for debugging only
@@ -1194,10 +1196,12 @@ func (w *World) CreateSettlements() {
 	w.settlementGrid = grid
 }
 
+// TODO move this into layout
 func CreateLayers() {
 
 	tilesLayer = ebiten.NewImage(WindowWidth/2, WindowHeight/2)
 	thingsLayer = ebiten.NewImage(WindowWidth/2, WindowHeight/2)
+	uiLayer = ebiten.NewImage(WindowWidth/2, WindowHeight/2)
 }
 
 func CreateUi() {

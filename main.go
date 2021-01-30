@@ -68,15 +68,17 @@ type SettlementUi struct {
 }
 
 type Button struct {
-	redraw   bool
-	content  string
-	x, y     int
-	width    int
-	hover    bool // should default to false
-	img      *UiSprite
-	bounds   image.Rectangle
-	windowed bool
-	window   *Window
+	redraw     bool
+	content    string
+	x, y       int
+	width      int
+	hover      bool // should default to false
+	img        *UiSprite
+	bounds     image.Rectangle
+	windowed   bool
+	window     *Window
+	executable bool
+	exec       func() string
 }
 
 type Message struct {
@@ -445,6 +447,8 @@ func UpdateInputs() {
 	justFocusedSettlement := false
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 
+		HandleButtonClicks()
+
 		if validMouseSelection && world.tiles[mtx][mty].kind == TGrass {
 
 			if world.settlementGrid[mtx][mty].kind.nothing {
@@ -532,6 +536,18 @@ func UpdateInputs() {
 			fmt.Println("Things layer shown")
 		} else {
 			fmt.Println("Things layer hidden")
+		}
+	}
+}
+
+func HandleButtonClicks() {
+	// could actually store hovered button as a variable, but this will do for now
+	for _, b := range AllButtons {
+		if b.hover {
+			if b.executable {
+				fmt.Println("button click")
+				fmt.Println(b.exec())
+			}
 		}
 	}
 }
@@ -982,6 +998,10 @@ func CreateSettlementUi() {
 		// TODO button on click
 		// TODO make this a function of Window?
 		b, _ := CreateButton(&btn, jobsText, 0, 0)
+		b.executable = true
+		b.exec = func() string {
+			return jobsText
+		}
 		b.windowed = true
 		b.window = settlementUi.window
 		settlementUi.buttons = append(settlementUi.buttons, b)

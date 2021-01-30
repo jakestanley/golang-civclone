@@ -202,8 +202,12 @@ var (
 	// constant vars (they're vars but we treat them as constants. see defs())
 	settlementKinds map[string]*SettlementKind
 	nothing         Settlement
-	epochs          []string
-	tileSprites     map[string]TileSprite
+	epochs          = []string{
+		"Neolithic Age", "Roman Age", "Classical Age",
+		"Age of Steam", "Modern Age", "Transhuman Age",
+		"Apocalyptic Age",
+	}
+	tileSprites map[string]TileSprite
 
 	// meta game state
 	initialised bool
@@ -416,10 +420,8 @@ func FocusSettlement(x, y int) bool {
 		// do nothing
 		return false
 	}
-	// TODO more UI logic?
-	// TODO move UI with mouse
-	// maybe this should be a 2D array? or just jobButtons? idk
 
+	// TODO move UI with mouse
 	settlementUi.sx = x
 	settlementUi.sy = y
 
@@ -628,12 +630,9 @@ func (g *Game) Update() error {
 	// we definitely shouldn't accept any user input after this until the next loop
 	HandleTurnEnd()
 
-	// TODO UpdateUi
-
 	// TODO delta
 	// if the game is running at half speed, the delta should be 2
 	// if the game is running at normal speed, the delta should be 1 etc
-
 	if ticks == 0 {
 
 		MonitorMemory()
@@ -975,7 +974,6 @@ func GetAvailableJobs(x, y int) []*Job {
 		return jobs
 	}
 
-	// TODO get assigned citizens as count
 	// TODO tool tip of job info
 	// TODO warn on excess effort
 	for k, v := range works {
@@ -1009,10 +1007,7 @@ func GetAvailableJobs(x, y int) []*Job {
 func ClearSettlementUi() {
 	settlementUi.focused = false
 	settlementUi.selectedCtz = nil
-	// TODO "delete" the buttons they still linger after ui is closed
-	// 	you can't actually delete stuff in go. that's what the GC is for.
-	// 	you'll have to remove them from AllButtons
-	// TODO may also need to do this in update
+	// TODO may also need to do this in UpdateSettlementUi
 	for i := 0; i < len(settlementUi.selectCtzButtons); i++ {
 		settlementUi.selectCtzButtons[i].destroy = true
 	}
@@ -1052,7 +1047,6 @@ func CreateSettlementUi() {
 
 	for j := 0; j < len(jobs); j++ {
 		jobsText := jobs[j].kind
-		// TODO button on click
 		// TODO make this a function of Window?
 		b, _ := CreateButton(&btn, jobsText, 0, 0)
 		b.executable = true
@@ -1074,7 +1068,6 @@ func UpdateSettlementUi() {
 
 }
 
-// TODO floating window "supertype"
 func DrawSettlementUi(screen *ebiten.Image) {
 	if settlementUi.focused && (settlementUi.redraw || settlementUi.window.redraw) {
 
@@ -1160,7 +1153,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	DrawSettlementUi(uiLayer)
 	DrawLayers(screen)
 
-	// TODO if debug
 	// TODO don't calculate mouse pos on the draw call. this is for debugging only
 	mx, my := ebiten.CursorPosition()
 	if debug {
@@ -1365,14 +1357,6 @@ func LoadSprites() {
 
 // because we can't use consts for stuff like this
 func defs() {
-
-	// TODO move this into the vars block.
-	// 	you can't declare const arrays but can have var arrays in there
-	epochs = []string{
-		"Neolithic Age", "Roman Age", "Classical Age",
-		"Age of Steam", "Modern Age", "Transhuman Age",
-		"Apocalyptic Age",
-	}
 
 	settlementKinds = make(map[string]*SettlementKind)
 

@@ -246,7 +246,7 @@ var (
 	AButtons []*Button
 
 	// debugging
-	debugprint        bool
+	debug             bool
 	renderTilesLayer  bool
 	renderThingsLayer bool
 )
@@ -515,7 +515,8 @@ func UpdateInputs() {
 
 	// debugging
 	if inpututil.IsKeyJustPressed(ebiten.KeyGraveAccent) {
-		debugprint = !debugprint
+		fmt.Println("Debugging toggled. Use '\\' to toggle again")
+		debug = !debug
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
 		renderTilesLayer = !renderTilesLayer
@@ -1079,7 +1080,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// TODO if debug
 	// TODO don't calculate mouse pos on the draw call. this is for debugging only
 	mx, my := ebiten.CursorPosition()
-	if debugprint {
+	if debug {
 		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse pos: %d,%d", mx, my), 16, 60)
 		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse on tile: %d, %d", mtx, mty), 16, 80)
 	}
@@ -1323,7 +1324,7 @@ func defs() {
 }
 
 func Init() {
-	debugprint = false
+	debug = false
 	defs()
 	LoadFonts()
 	LoadSprites()

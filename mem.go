@@ -14,6 +14,11 @@ var (
 )
 
 func MonitorMemory() {
+
+	if !debug {
+		return
+	}
+
 	// debug memory usage
 	runtime.ReadMemStats(&m)
 

@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -244,8 +245,9 @@ var (
 	cty                 int  = 0
 	mx                  int  = 0
 	my                  int  = 0
-	mtx                 int  = -1
-	mty                 int  = -1
+	mtx                 int  = 0
+	mty                 int  = 0
+	mouseMoved          bool = true
 	validMouseSelection bool = false
 	focusedSettlementX  int  = -1
 	focusedSettlementY  int  = -1
@@ -297,9 +299,6 @@ func ResetFrameState() {
 			}
 		}
 	}
-	validMouseSelection = false
-	mtx = -1
-	mty = -1
 }
 
 func CreateMessages() MessageQueue {
@@ -366,9 +365,13 @@ func UpdateDrawLocations() {
 	yOffset := 120
 
 	// mouse position must have been updated by now
-	mxf, myf := float64(mx), float64(my)
+	// mxf, myf := float64(mx), float64(my)
 	// TODO height offset for higher tiles
-	mouseFound := false
+	// mouseFound := false
+
+	smallestDistance := float64(-1.0)
+	closestX := 0
+	closestY := 0
 
 	for x := 0; x < len(world.tiles); x++ {
 		for y := 0; y < len(world.tiles[x]); y++ {
@@ -391,23 +394,58 @@ func UpdateDrawLocations() {
 				world.tiles[x][y].ty = ty
 			}
 
-			world.tiles[x][y].selected = false
-			if !mouseFound {
-				// this matches a box in the centre of the sprite. needs to actually fit the iso
-				// if you treat what the player sees as a rectangle, it won't work correctly
-				// can use rect and Point::in for this I think
-				// I'd like to evaluate all this and find the one with the pointer closest to the center tbh as a long term solution
-				if (tx+16 < mxf) && (mxf < tx+48) && (ty+8 < myf) && (myf < ty+24) {
-
-					world.tiles[x][y].selected = true
-					world.redraw = true
-					mtx, mty = x, y
-					mouseFound = true
-					validMouseSelection = IsTileSelectionValid()
+			if mouseMoved {
+				// TODO once the smallest distance exceeds the size of a tile, stop checking
+				// TODO put this in a separate method? does require iterating over the 2D array again though
+				// TODO check on mouse move only to save cycles and when world is not defocused
+				midpoint := image.Point{
+					X: int(tx + 32),
+					Y: int(ty + 16),
 				}
+				mousepoint := image.Point{
+					X: mx,
+					Y: my,
+				}
+
+				first := math.Pow(float64(mousepoint.X-midpoint.X), 2)
+				second := math.Pow(float64(mousepoint.Y-midpoint.Y), 2)
+				distance := math.Sqrt(first + second)
+
+				if smallestDistance == -1 || distance <= smallestDistance {
+					smallestDistance = distance
+					closestX = x
+					closestY = y
+				}
+
+				world.tiles[x][y].selected = false
 			}
+
+			// if !mouseFound {
+
+			// 	// this matches a box in the centre of the sprite. needs to actually fit the iso
+			// 	// if you treat what the player sees as a rectangle, it won't work correctly
+			// 	// can use rect and Point::in for this I think
+			// 	// I'd like to evaluate all this and find the one with the pointer closest to the center tbh as a long term solution
+			// 	if (tx+16 < mxf) && (mxf < tx+48) && (ty+8 < myf) && (myf < ty+24) {
+
+			// 		world.tiles[x][y].selected = true
+			// 		world.redraw = true
+			// 		mtx, mty = x, y
+			// 		// mouseFound = true
+			// 		validMouseSelection = IsTileSelectionValid()
+			// 	}
+			// }
 		}
 	}
+
+	world.tiles[closestX][closestY].selected = true
+	world.redraw = true
+	mtx, mty = closestX, closestY
+	validMouseSelection = IsTileSelectionValid()
+}
+
+func UpdateHoveredTile() {
+
 }
 
 func DefocusSettlement() {
@@ -606,6 +644,23 @@ func HandleTurnEnd() {
 	}
 }
 
+// TODO bind to window. ebiten seems to track outside of the window too
+// 	i.e if mx < 0, mx = 0,
+func GetMouseMovement() {
+
+	if !ebiten.IsFocused() {
+		return
+	}
+
+	newMx, newMy := ebiten.CursorPosition()
+	if newMx == mx && newMy == my {
+		mouseMoved = false
+	} else {
+		mouseMoved = true
+		mx, my = newMx, newMy
+	}
+}
+
 func (g *Game) Update() error {
 
 	// initialise the game state if it's not
@@ -616,9 +671,7 @@ func (g *Game) Update() error {
 		Init()
 	}
 
-	// TODO bind to window. ebiten seems to track outside of the window too
-	// 	i.e if mx < 0, mx = 0,
-	mx, my = ebiten.CursorPosition()
+	GetMouseMovement()
 
 	// this also finds which tile the mouse is on
 	UpdateDrawLocations()

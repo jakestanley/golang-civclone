@@ -223,6 +223,7 @@ var (
 	// ui stuff
 	fontTitle    font.Face
 	fontDetail   font.Face
+	fontSmall    font.Face
 	btn          UiSprite
 	settlementUi SettlementUi
 

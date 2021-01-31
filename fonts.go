@@ -3,29 +3,23 @@ package main
 import (
 	"io/ioutil"
 	"log"
+	"path/filepath"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 )
 
-func LoadFonts() {
+const dpi = 72
 
-	const dpi = 72
+func LoadTtfFont(path string, size int) font.Face {
 
-	fopsTitle := &opentype.FaceOptions{
-		Size:    16,
+	fops := &opentype.FaceOptions{
+		Size:    float64(size),
 		DPI:     dpi,
 		Hinting: font.HintingNone,
 	}
 
-	fopsDetail := &opentype.FaceOptions{
-		Size:    9,
-		DPI:     dpi,
-		Hinting: font.HintingNone,
-	}
-
-	// load title font
-	data, err := ioutil.ReadFile("font/alagard.ttf")
+	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,28 +29,18 @@ func LoadFonts() {
 		log.Fatal(err)
 	}
 
-	fontTitle, err = opentype.NewFace(ttf, fopsTitle)
-
+	font, err := opentype.NewFace(ttf, fops)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// load detail font
-	data, err = ioutil.ReadFile("font/Volter__28Goldfish_29.ttf")
-	if err != nil {
-		log.Fatal(err)
-	}
+	return font
+}
 
-	ttf, err = opentype.Parse(data)
+func LoadFonts() {
 
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fontDetail, err = opentype.NewFace(ttf, fopsDetail)
-
-	if err != nil {
-		log.Fatal(err)
-	}
+	fontTitle = LoadTtfFont(filepath.Join("font", "alagard.ttf"), 16)
+	fontDetail = LoadTtfFont(filepath.Join("font", "Volter__28Goldfish_29.ttf"), 9)
+	fontSmall = LoadTtfFont(filepath.Join("font", "small_pixel.ttf"), 8)
 
 }

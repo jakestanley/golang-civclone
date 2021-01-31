@@ -1239,15 +1239,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if debug {
 		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse pos: %d,%d", mx, my), 16, 60)
 		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mouse on tile: %d, %d", mtx, mty), 16, 80)
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Current FPS: %f", ebiten.CurrentFPS()), 16, 100)
 	}
 }
 
+// Layout is called every frame, which I didn't know until now...
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 
 	sWidth = outsideWidth / 2
 	sHeight = outsideHeight / 2
 
-	CreateLayers(sWidth, sHeight)
+	if !initialised {
+		CreateLayers(sWidth, sHeight)
+	}
 
 	return sWidth, sHeight
 }

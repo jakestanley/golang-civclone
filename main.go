@@ -182,12 +182,13 @@ type Research struct {
 }
 
 const (
+	Scale = 2
 	// MaxMemAlloc maximum MiB we want to allow to be allocated before we crash the program
 	MaxMemAlloc = 128
-	// WindowWidth default window width
+	// WindowWidth is the minimum supported window width
 	WindowWidth = 1024
-	// WindowHeight default window height
-	WindowHeight = 600
+	// WindowHeight is the minimum supported window height
+	WindowHeight = 768
 	// TWater water tile type index
 	TWater = 0
 	// TGrass grass tile type index
@@ -1246,8 +1247,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 // Layout is called every frame, which I didn't know until now...
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 
-	sWidth = outsideWidth / 2
-	sHeight = outsideHeight / 2
+	sWidth = outsideWidth / Scale
+	sHeight = outsideHeight / Scale
 
 	if !initialised {
 		CreateLayers(sWidth, sHeight)

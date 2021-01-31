@@ -326,7 +326,7 @@ func UpdateInputs() {
 		if validMouseSelection && world.tiles[mtx][mty].category == TGrass {
 
 			if world.settlementGrid[mtx][mty].kind.nothing {
-				world.settlementGrid[mtx][mty] = world.CreateSettlement(settlementKinds["SUBURB"])
+				world.settlementGrid[mtx][mty] = world.CreateSettlement(settlementKinds["KAILYNN"])
 			}
 		}
 	}
@@ -812,6 +812,13 @@ func defs() {
 
 	settlementKinds["SUBURB"] = &SettlementKind{
 		animation: LoadAnimatedSprite("img/sprites/buildings", "house", 2),
+		popcap:    20,
+		nothing:   false,
+		effort:    0.2,
+	}
+
+	settlementKinds["KAILYNN"] = &SettlementKind{
+		animation: LoadAnimatedSprite("img/sprites/buildings", "kailynn", 1),
 		popcap:    20,
 		nothing:   false,
 		effort:    0.2,

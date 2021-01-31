@@ -244,6 +244,7 @@ var (
 	cty                 int  = 0
 	mx                  int  = 0
 	my                  int  = 0
+	mouseMoved          bool = true
 	mtx                 int  = -1
 	mty                 int  = -1
 	validMouseSelection bool = false
@@ -616,9 +617,17 @@ func (g *Game) Update() error {
 		Init()
 	}
 
-	// TODO bind to window. ebiten seems to track outside of the window too
+	// TODO clamp to window. ebiten seems to track outside of the window too
 	// 	i.e if mx < 0, mx = 0,
-	mx, my = ebiten.CursorPosition()
+	if ebiten.IsFocused() {
+		newMx, newMy := ebiten.CursorPosition()
+		if newMx == mx && newMy == my {
+			mouseMoved = false
+		} else {
+			mx, my = newMx, newMy
+			mouseMoved = true
+		}
+	}
 
 	// this also finds which tile the mouse is on
 	UpdateDrawLocations()

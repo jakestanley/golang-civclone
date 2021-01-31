@@ -1087,7 +1087,12 @@ func CreateSettlementUi() {
 		b.executable = true
 		idx := i
 		b.exec = func() string {
-			// TODO disable other selections
+			if b.selected {
+				// we're going to flip this in SelectCitizen. this is a bit shit
+				settlementUi.selectedCtz = nil
+			} else {
+				settlementUi.selectedCtz = &settlement.citizens[idx]
+			}
 			settlementUi.SelectCitizen(idx)
 			return "Selected citizen"
 		}

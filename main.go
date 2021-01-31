@@ -171,6 +171,7 @@ type World struct {
 	xOffset        int
 	yOffset        int
 	redraw         bool
+	cachedImg      *ebiten.Image
 }
 
 type Research struct {
@@ -399,6 +400,7 @@ func UpdateDrawLocations() {
 				if (tx+16 < mxf) && (mxf < tx+48) && (ty+8 < myf) && (myf < ty+24) {
 
 					world.tiles[x][y].selected = true
+					world.redraw = true
 					mtx, mty = x, y
 					mouseFound = true
 					validMouseSelection = IsTileSelectionValid()
@@ -732,41 +734,49 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 
 	// north is top left
 	// might want to store this layer globally or something in between frames and reuse it
-	for x := 0; x < len(world.tiles); x++ {
-		for y := len(world.tiles[x]) - 1; y > -1; y-- {
+	if world.redraw || world.cachedImg == nil {
 
-			var ttype string
-			colour := &ebiten.ColorM{}
+		world.cachedImg = ebiten.NewImage(sWidth, sHeight)
 
-			// tile type specific shading
-			if world.tiles[x][y].kind == TWater {
+		for x := 0; x < len(world.tiles); x++ {
+			for y := len(world.tiles[x]) - 1; y > -1; y-- {
 
-				ttype = "water"
+				var ttype string
+				colour := &ebiten.ColorM{}
 
-				if x == ctx && y == cty {
-					colour.Scale(0.6, 1, 0.6, 1)
-				}
+				// tile type specific shading
+				if world.tiles[x][y].kind == TWater {
 
-			} else if world.tiles[x][y].kind == TGrass {
+					ttype = "water"
 
-				ttype = "grass"
-
-				// colour tile differently based on selection
-				if world.tiles[x][y].selected {
-					if validMouseSelection {
+					if x == ctx && y == cty {
 						colour.Scale(0.6, 1, 0.6, 1)
-					} else {
-						colour.Scale(1, 0.6, 0.6, 1)
+					}
+
+				} else if world.tiles[x][y].kind == TGrass {
+
+					ttype = "grass"
+
+					// colour tile differently based on selection
+					if world.tiles[x][y].selected {
+						if validMouseSelection {
+							colour.Scale(0.6, 1, 0.6, 1)
+						} else {
+							colour.Scale(1, 0.6, 0.6, 1)
+						}
 					}
 				}
+
+				DrawTile(colour, world.cachedImg, world, ttype, x, y)
+
+				// we're done with the tile move state. on to the next frame
+				world.tiles[x][y].moved = false
 			}
-
-			DrawTile(colour, layer, world, ttype, x, y)
-
-			// we're done with the tile move state. on to the next frame
-			world.tiles[x][y].moved = false
 		}
 	}
+
+	layer.DrawImage(world.cachedImg, &ebiten.DrawImageOptions{})
+	world.redraw = false
 
 	// debugging only
 	// mx, my := ebiten.CursorPosition()
@@ -1254,8 +1264,9 @@ func CreateResearch() Research {
 func CreateWorld() World {
 
 	w := World{
-		tiles:  IslandWorldTiles(),
-		redraw: true,
+		tiles:     IslandWorldTiles(),
+		redraw:    true,
+		cachedImg: nil,
 	}
 
 	w.CreateSettlements()

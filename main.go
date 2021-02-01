@@ -102,12 +102,13 @@ type MessageQueue struct {
 
 // Tiles
 type Tile struct {
-	kind     int
-	building int
-	selected bool
-	moved    bool
-	height   int
-	liquid   bool
+	kind        int
+	building    int
+	selected    bool
+	moved       bool
+	height      int
+	liquid      bool
+	highlighted bool
 	// cache
 	tx       float64
 	ty       float64
@@ -218,9 +219,10 @@ var (
 	initialised bool
 
 	// world images
-	tilesLayer  *ebiten.Image
-	thingsLayer *ebiten.Image
-	uiLayer     *ebiten.Image
+	tilesLayer     *ebiten.Image
+	thingsLayer    *ebiten.Image
+	highlightLayer *ebiten.Image
+	uiLayer        *ebiten.Image
 
 	// ui stuff
 	fontTitle    font.Face
@@ -239,6 +241,7 @@ var (
 	world     World
 	research  Research
 	north     *ebiten.Image
+	highlight *ebiten.Image
 
 	// ctx and cty are the coordinate of the tile that the cursor is on
 	ctx                 int  = 0
@@ -414,6 +417,7 @@ func UpdateDrawLocations() {
 
 func DefocusSettlement() {
 	if settlementUi.focused {
+		HighlightAvailableTiles(settlementUi.sx, settlementUi.sy, false)
 		ClearSettlementUi()
 	}
 }
@@ -465,7 +469,6 @@ func UpdateInputs() {
 				button.hover = false
 				button.SetRedraw()
 			}
-
 		}
 	}
 
@@ -476,9 +479,13 @@ func UpdateInputs() {
 
 		if validMouseSelection && world.tiles[mtx][mty].kind == TGrass {
 
-			if world.settlementGrid[mtx][mty].kind.nothing {
+			clickedSettlement := world.settlementGrid[mtx][mty]
+
+			if clickedSettlement.kind.nothing {
 				// TODO instead spawn the buildings UI
 				world.settlementGrid[mtx][mty] = world.CreateSettlement(settlementKinds["VILLAGE"])
+			} else if !clickedSettlement.completed {
+				DefocusSettlement() // TODO change to defocus selection? idk
 			} else {
 				DefocusSettlement()
 				justFocusedSettlement = FocusSettlement(mtx, mty)
@@ -487,6 +494,7 @@ func UpdateInputs() {
 	}
 
 	if justFocusedSettlement {
+		HighlightAvailableTiles(mtx, mty, true)
 		CreateSettlementUi()
 	} else {
 		UpdateSettlementUi()
@@ -675,7 +683,7 @@ func GetT(g *ebiten.GeoM) (float64, float64) {
 
 // TODO consider making this a function of Tile
 // 	although tiles do need the context of surrounding tiles provided by world
-func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype string, x, y int) {
+func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype string, x, y int, highlighted bool) {
 
 	tile := &world.tiles[x][y]
 
@@ -777,7 +785,7 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 					}
 				}
 
-				DrawTile(colour, world.cachedImg, world, ttype, x, y)
+				DrawTile(colour, world.cachedImg, world, ttype, x, y, world.tiles[x][y].highlighted)
 
 				// we're done with the tile move state. on to the next frame
 				world.tiles[x][y].moved = false
@@ -822,6 +830,21 @@ func DrawThings(layer *ebiten.Image) {
 	}
 }
 
+func DrawHighlightLayer(layer *ebiten.Image) {
+
+	layer.Clear()
+
+	// TODO redraw property
+	for x := 0; x < len(world.tiles); x++ {
+		for y := len(world.tiles[x]) - 1; y > -1; y-- {
+			tile := world.tiles[x][y]
+			if tile.highlighted {
+				layer.DrawImage(highlight, tile.opsFlat)
+			}
+		}
+	}
+}
+
 func DrawLayers(screen *ebiten.Image) {
 
 	if renderTilesLayer {
@@ -832,6 +855,7 @@ func DrawLayers(screen *ebiten.Image) {
 		// TODO if defocused, i.e saved or blocking dialogue, dim
 		screen.DrawImage(thingsLayer, &ebiten.DrawImageOptions{})
 	}
+	screen.DrawImage(highlightLayer, &ebiten.DrawImageOptions{})
 	screen.DrawImage(uiLayer, &ebiten.DrawImageOptions{})
 }
 
@@ -1003,6 +1027,29 @@ func DrawUi(layer *ebiten.Image) {
 	// newer messages should be at the bottom of the screen and older messages should fade
 	messages.DrawMessages(layer)
 
+}
+
+func HighlightAvailableTiles(x, y int, highlighted bool) {
+
+	// TODO don't forget array bounds
+	// TODO use a different or simpler type
+	works := make(map[string]*Work)
+	works["here"] = &Work{x: x, y: y}
+	works["north"] = &Work{x: x - 1, y: y}
+	works["east"] = &Work{x: x, y: y + 1}
+	works["south"] = &Work{x: x + 1, y: y}
+	works["west"] = &Work{x: x, y: y - 1}
+
+	for _, v := range works {
+		settlement := world.settlementGrid[v.x][v.y]
+		tile := &world.tiles[v.x][v.y]
+
+		if settlement.kind.nothing {
+			continue
+		} else {
+			tile.highlighted = highlighted
+		}
+	}
 }
 
 func GetAvailableJobs(x, y int) []*Job {
@@ -1231,6 +1278,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	DrawWorld(tilesLayer, &world)
 	DrawThings(thingsLayer)
+	DrawHighlightLayer(highlightLayer)
 	DrawUi(uiLayer)
 	DrawSettlementUi(uiLayer)
 	DrawLayers(screen)
@@ -1259,11 +1307,12 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 
 func CreateTile(kind int, height int, liquid bool) Tile {
 	return Tile{
-		kind:     kind,
-		selected: false,
-		moved:    true,
-		height:   height,
-		liquid:   liquid,
+		kind:        kind,
+		selected:    false,
+		moved:       true,
+		height:      height,
+		liquid:      liquid,
+		highlighted: false,
 	}
 }
 
@@ -1367,14 +1416,16 @@ func CreateLayers(sWidth, sHeight int) {
 
 	tilesLayer = ebiten.NewImage(sWidth, sHeight)
 	thingsLayer = ebiten.NewImage(sWidth, sHeight)
+	highlightLayer = ebiten.NewImage(sWidth, sHeight)
 	uiLayer = ebiten.NewImage(sWidth, sHeight)
 }
 
 func CreateUi() {
 
 	settlementUi = SettlementUi{
+		// TODO move to bottom right?
 		window: &Window{
-			width:  300,
+			width:  150,
 			height: 200,
 			px:     16,
 			py:     16,
@@ -1440,6 +1491,8 @@ func LoadSprites() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	highlight, _, err = ebitenutil.NewImageFromFile(filepath.Join("img", "tiles", "highlight.png"))
 
 	// TODO alpha property
 	btn = LoadUISprite("img/ui/button")

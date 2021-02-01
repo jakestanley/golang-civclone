@@ -830,6 +830,7 @@ func DrawThings(layer *ebiten.Image) {
 	}
 }
 
+// TODO don't draw if not required. skip any draw calls
 func DrawHighlightLayer(layer *ebiten.Image) {
 
 	layer.Clear()
@@ -839,7 +840,16 @@ func DrawHighlightLayer(layer *ebiten.Image) {
 		for y := len(world.tiles[x]) - 1; y > -1; y-- {
 			tile := world.tiles[x][y]
 			if tile.highlighted {
+
 				layer.DrawImage(highlight, tile.opsFlat)
+
+				settlement := world.settlementGrid[x][y]
+				if !settlement.completed {
+					words := fmt.Sprintf("%.1f %%", settlement.progress*100)
+					width := text.BoundString(fontSmall, words).Dx()
+					text.Draw(layer, words, fontSmall, int(tile.tx)+32-(width/2), int(tile.ty)+16, color.White)
+				}
+
 			}
 		}
 	}

@@ -477,7 +477,9 @@ func UpdateInputs() {
 
 		HandleButtonClicks()
 
-		if validMouseSelection && world.tiles[mtx][mty].kind == TGrass {
+		if settlementUi.focused && validMouseSelection && settlementUi.selectedCtz != nil && world.tiles[mtx][mty].highlighted {
+			fmt.Println(fmt.Sprintf("Assigned citizen %s to %s", settlementUi.selectedCtz.name, world.tiles[mtx][mty].kind))
+		} else if validMouseSelection && world.tiles[mtx][mty].kind == TGrass {
 
 			clickedSettlement := world.settlementGrid[mtx][mty]
 
@@ -776,7 +778,7 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 					ttype = "grass"
 
 					// colour tile differently based on selection
-					if world.tiles[x][y].selected {
+					if world.tiles[x][y].selected && (!settlementUi.focused || world.tiles[x][y].highlighted) {
 						if validMouseSelection {
 							colour.Scale(0.6, 1, 0.6, 1)
 						} else {
@@ -846,6 +848,7 @@ func DrawHighlightLayer(layer *ebiten.Image) {
 				settlement := world.settlementGrid[x][y]
 				if !settlement.completed {
 					words := fmt.Sprintf("%.1f %%", settlement.progress*100)
+					// TODO show progress on next turn
 					width := text.BoundString(fontSmall, words).Dx()
 					text.Draw(layer, words, fontSmall, int(tile.tx)+32-(width/2), int(tile.ty)+16, color.White)
 				}

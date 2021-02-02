@@ -108,6 +108,7 @@ type Tile struct {
 	moved       bool
 	height      int
 	liquid      bool
+	hovered     bool
 	highlighted bool
 	// cache
 	tx       float64
@@ -378,10 +379,11 @@ func UpdateDrawLocations() {
 	for x := 0; x < len(world.tiles); x++ {
 		for y := 0; y < len(world.tiles[x]); y++ {
 
-			tx := world.tiles[x][y].tx
-			ty := world.tiles[x][y].ty
+			tile := &world.tiles[x][y]
+			tx := tile.tx
+			ty := tile.ty
 
-			if world.tiles[x][y].moved {
+			if tile.moved {
 
 				// TODO use tile width vars or consts
 				// tx and ty are where the tile will be drawn from
@@ -389,14 +391,14 @@ func UpdateDrawLocations() {
 				// Recalculating tile position on screen
 				tx = float64(xOffset) + float64(y*32) + float64(x*32)
 				ty = float64(yOffset) - float64(16*y) + float64(x*16)
-				ty = ty - float64(world.tiles[x][y].height)
+				ty = ty - float64(tile.height)
 
 				// update dem positions
-				world.tiles[x][y].tx = tx
-				world.tiles[x][y].ty = ty
+				tile.tx = tx
+				tile.ty = ty
 			}
 
-			world.tiles[x][y].selected = false
+			tile.hovered = false
 			if !mouseFound {
 				// this matches a box in the centre of the sprite. needs to actually fit the iso
 				// if you treat what the player sees as a rectangle, it won't work correctly
@@ -404,7 +406,7 @@ func UpdateDrawLocations() {
 				// I'd like to evaluate all this and find the one with the pointer closest to the center tbh as a long term solution
 				if (tx+16 < mxf) && (mxf < tx+48) && (ty+8 < myf) && (myf < ty+24) {
 
-					world.tiles[x][y].selected = true
+					tile.hovered = true
 					world.redraw = true
 					mtx, mty = x, y
 					mouseFound = true
@@ -689,7 +691,7 @@ func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype st
 
 	tile := &world.tiles[x][y]
 
-	if tile.moved || tile.selected {
+	if tile.moved || tile.hovered {
 
 		const extraTileHeight = 16
 
@@ -722,7 +724,7 @@ func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype st
 		tile.opsFlat = opsFlat
 		tile.opsWest = opsWest
 		tile.opsSouth = opsSouth
-	} else if !tile.selected {
+	} else if !tile.hovered {
 		tile.opsFlat.ColorM.Reset()
 		tile.opsWest.ColorM.Reset()
 		tile.opsSouth.ColorM.Reset()
@@ -761,11 +763,13 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 		for x := 0; x < len(world.tiles); x++ {
 			for y := len(world.tiles[x]) - 1; y > -1; y-- {
 
+				tile := &world.tiles[x][y]
+
 				var ttype string
 				colour := &ebiten.ColorM{}
 
 				// tile type specific shading
-				if world.tiles[x][y].kind == TWater {
+				if tile.kind == TWater {
 
 					ttype = "water"
 
@@ -773,12 +777,12 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 						colour.Scale(0.6, 1, 0.6, 1)
 					}
 
-				} else if world.tiles[x][y].kind == TGrass {
+				} else if tile.kind == TGrass {
 
 					ttype = "grass"
 
 					// colour tile differently based on selection
-					if world.tiles[x][y].selected && (!settlementUi.focused || world.tiles[x][y].highlighted) {
+					if tile.hovered && (!settlementUi.focused || tile.highlighted) {
 						if validMouseSelection {
 							colour.Scale(0.6, 1, 0.6, 1)
 						} else {
@@ -787,10 +791,10 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 					}
 				}
 
-				DrawTile(colour, world.cachedImg, world, ttype, x, y, world.tiles[x][y].highlighted)
+				DrawTile(colour, world.cachedImg, world, ttype, x, y, tile.highlighted)
 
 				// we're done with the tile move state. on to the next frame
-				world.tiles[x][y].moved = false
+				tile.moved = false
 			}
 		}
 	}
@@ -840,10 +844,23 @@ func DrawHighlightLayer(layer *ebiten.Image) {
 	// TODO redraw property
 	for x := 0; x < len(world.tiles); x++ {
 		for y := len(world.tiles[x]) - 1; y > -1; y-- {
-			tile := world.tiles[x][y]
+			tile := &world.tiles[x][y]
 			if tile.highlighted {
 
-				layer.DrawImage(highlight, tile.opsFlat)
+				geom := Copy(&tile.opsFlat.GeoM)
+				ops := &ebiten.DrawImageOptions{
+					GeoM: geom,
+				}
+
+				if tile.selected {
+					// orange
+					const div = 255
+					r, g, b := float64(255), float64(191), float64(0)
+					dr, dg, db := r/div, g/div, b/div
+					ops.ColorM.Scale(dr, dg, db, 1)
+				}
+
+				layer.DrawImage(highlight, ops)
 
 				settlement := world.settlementGrid[x][y]
 				if !settlement.completed {
@@ -1053,6 +1070,7 @@ func HighlightAvailableTiles(x, y int, highlighted bool) {
 	works["south"] = &Work{x: x + 1, y: y}
 	works["west"] = &Work{x: x, y: y - 1}
 
+	world.tiles[x][y].selected = highlighted
 	for _, v := range works {
 		settlement := world.settlementGrid[v.x][v.y]
 		tile := &world.tiles[v.x][v.y]
@@ -1322,6 +1340,7 @@ func CreateTile(kind int, height int, liquid bool) Tile {
 	return Tile{
 		kind:        kind,
 		selected:    false,
+		hovered:     false,
 		moved:       true,
 		height:      height,
 		liquid:      liquid,

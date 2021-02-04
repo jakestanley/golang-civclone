@@ -8,8 +8,8 @@ const (
 )
 
 // GrassWorldTiles is an 8x8 grid of grass tiles
-func GrassWorldTiles() [][]Tile {
-	return [][]Tile{
+func GrassWorldTiles() [][]Square {
+	return [][]Square{
 		{CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false)},
 		{CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false)},
 		{CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false)},
@@ -22,8 +22,8 @@ func GrassWorldTiles() [][]Tile {
 }
 
 // IslandWorldTiles is Kailynn's island
-func IslandWorldTiles() [][]Tile {
-	return [][]Tile{
+func IslandWorldTiles() [][]Square {
+	return [][]Square{
 		{CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true)},
 		{CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true)},
 		{CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true), CreateTile(TGrass, GrassHeight+2, false), CreateTile(TGrass, GrassHeight+2, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TWater, WaterHeight, true), CreateTile(TWater, WaterHeight, true)},
@@ -36,8 +36,8 @@ func IslandWorldTiles() [][]Tile {
 }
 
 // HeightTestTiles crazy height difference to stress you out
-func HeightTestTiles() [][]Tile {
-	return [][]Tile{
+func HeightTestTiles() [][]Square {
+	return [][]Square{
 		{CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false)},
 		{CreateTile(TWater, WaterHeight, true), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false)},
 		{CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false), CreateTile(TGrass, GrassHeight, false)},

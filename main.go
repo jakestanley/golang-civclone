@@ -28,6 +28,7 @@ type Citizen struct {
 	gender    string
 	education int
 	genetics  int
+	assigned  bool
 	// TODO home settlement, tile on last turn
 	// home settlement could provide a buff to effort
 }
@@ -167,10 +168,12 @@ type SettlementKind struct {
 }
 
 type Settlement struct {
-	kind      *SettlementKind
-	progress  float64
-	completed bool
-	citizens  []Citizen
+	// TODO CONSIDER whether or not this is duplication
+	worldX, worldY int
+	kind           *SettlementKind
+	progress       float64
+	completed      bool
+	citizens       []Citizen
 }
 
 type Work struct {
@@ -184,12 +187,12 @@ type Job struct {
 }
 
 type World struct {
-	squares        [][]Square
-	settlementList []*Settlement
-	xOffset        int
-	yOffset        int
-	redraw         bool
-	cachedImg      *ebiten.Image
+	squares     [][]Square
+	settlements []*Settlement
+	xOffset     int
+	yOffset     int
+	redraw      bool
+	cachedImg   *ebiten.Image
 }
 
 type Research struct {
@@ -511,7 +514,7 @@ func UpdateInputs() {
 
 			if clickedSquare.IsEmpty() {
 				// TODO instead spawn the buildings UI
-				world.squares[mtx][mty].settlement = world.CreateSettlement(settlementKinds["VILLAGE"])
+				world.squares[mtx][mty].settlement = world.CreateSettlement(settlementKinds["VILLAGE"], mtx, mty)
 			} else if !clickedSquare.settlement.completed {
 				DefocusSettlement() // TODO change to defocus selection? idk
 			} else {
@@ -533,8 +536,9 @@ func UpdateInputs() {
 
 		if validMouseSelection && world.squares[mtx][mty].kind == TGrass {
 
+			// TODO should mtx, mty still be global?
 			if world.squares[mtx][mty].settlement == nil {
-				world.squares[mtx][mty].settlement = world.CreateSettlement(settlementKinds["SUBURB"])
+				world.squares[mtx][mty].settlement = world.CreateSettlement(settlementKinds["SUBURB"], mtx, mty)
 			}
 		}
 	}
@@ -603,17 +607,29 @@ func HandleTurnEnd() {
 	}
 
 	// iterate through constructions
-	for i := 0; i < len(world.settlementList); i++ {
-		s := world.settlementList[i]
-		if !s.completed {
-			// TODO use manpower of adjacent settlement. obviously this will be
-			//  a problem with multiple adjacent builds/settlements, for future
-			// 	jakey
-			s.progress += s.kind.effort
-			if s.progress >= 1 {
-				s.completed = true
-				messages.AddMessage(fmt.Sprintf("Construction completed on '%s'", s.kind.name))
+	for i := 0; i < len(world.settlements); i++ {
+		s := world.settlements[i]
+
+		effort := 0.0
+		for i := 0; i < len(s.citizens); i++ {
+			if !s.citizens[i].assigned {
+				// if citizens aren't assigned, use their unused effort on
+				// 	eligible constructions
+				effort += s.citizens[i].CalculateEffort()
 			}
+		}
+
+		fmt.Println(fmt.Sprintf("Spare effort: %f", effort))
+		settlements := world.GetAdjacentUncompletedSettlements(s.worldX, s.worldY)
+		count := len(settlements)
+
+		dividedEffort := 0.0
+		if count > 0 {
+			dividedEffort = effort / float64(count)
+		}
+
+		for _, s := range settlements {
+			s.ApplyEffort(dividedEffort)
 		}
 	}
 }
@@ -902,6 +918,10 @@ func (c *Citizen) ToTerseString() string {
 	return fmt.Sprintf("Citizen, %c%d", strings.ToUpper(c.gender)[0], c.age)
 }
 
+func (c *Citizen) CalculateEffort() float64 {
+	return 0.1
+}
+
 // TODO button state variable
 // CreateButton appends it to the global buttons list, returns the button and the text width (TODO maybe make this whole button width?)
 func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
@@ -1049,8 +1069,8 @@ func DrawUi(layer *ebiten.Image) {
 	// TODO cache this value in update
 	// TODO previous frame state (so we can avoid unnecessary calculations)
 	civs := 0
-	for i := 0; i < len(world.settlementList); i++ {
-		civs += len(world.settlementList[i].citizens)
+	for i := 0; i < len(world.settlements); i++ {
+		civs += len(world.settlements[i].citizens)
 	}
 	text.Draw(layer, fmt.Sprintf("Citizens: %d", civs), fontDetail, 8, 30, color.White)
 	text.Draw(layer, fmt.Sprintf("Year: %d", year), fontDetail, 8, 44, color.White)
@@ -1380,9 +1400,11 @@ func CreateWorld() World {
 // CreateSettlement creates a settlement add it to the world's settlement
 // 	list (if it's not nothing) and return the settlement so it can be
 // 	added to the world grid location by the calling code
-func (w *World) CreateSettlement(kind *SettlementKind) *Settlement {
+func (w *World) CreateSettlement(kind *SettlementKind, worldX, worldY int) *Settlement {
 
 	s := &Settlement{
+		worldX:    worldX,
+		worldY:    worldY,
 		kind:      kind,
 		completed: false,
 		progress:  0,
@@ -1397,7 +1419,7 @@ func (w *World) CreateSettlement(kind *SettlementKind) *Settlement {
 	return s
 }
 
-func CreateSpawnSettlement() *Settlement {
+func CreateSpawnSettlement(worldX, worldY int) *Settlement {
 
 	sk := settlementKinds["VILLAGE"]
 	c := []Citizen{}
@@ -1421,13 +1443,28 @@ func CreateSpawnSettlement() *Settlement {
 			gender:   gender,
 			genetics: 100,
 			age:      18,
+			assigned: false,
 		})
 	}
 
 	return &Settlement{
+		worldX:    worldX,
+		worldY:    worldY,
 		kind:      sk,
 		completed: true,
 		citizens:  c,
+	}
+}
+
+func (s *Settlement) ApplyEffort(effort float64) {
+
+	// TODO error if already completed
+	if !s.completed {
+		s.progress += effort
+		if s.progress >= 1 {
+			s.completed = true
+			messages.AddMessage(fmt.Sprintf("Construction completed on '%s'", s.kind.name))
+		}
 	}
 }
 
@@ -1436,11 +1473,47 @@ func (w *World) CreateSettlements() {
 	list := []*Settlement{}
 
 	// spawn village in the middle(ish) of the map
-	s := CreateSpawnSettlement()
+	s := CreateSpawnSettlement(3, 4)
 	list = append(list, s)
 
 	w.squares[3][4].settlement = s
-	w.settlementList = list
+	w.settlements = list
+}
+
+func (w *World) GetAdjacentSettlements(x, y int) []*Settlement {
+
+	settlements := []*Settlement{}
+
+	if x > 0 && world.squares[x-1][y].settlement != nil {
+		settlements = append(settlements, world.squares[x-1][y].settlement)
+	}
+
+	if y > 0 && world.squares[x][y-1].settlement != nil {
+		settlements = append(settlements, world.squares[x][y-1].settlement)
+	}
+
+	if x < len(world.squares)-1 && world.squares[x+1][y].settlement != nil {
+		settlements = append(settlements, world.squares[x+1][y].settlement)
+	}
+
+	if x < len(world.squares) && y < len(world.squares[x])-1 && world.squares[x][y+1].settlement != nil {
+		settlements = append(settlements, world.squares[x][y+1].settlement)
+	}
+
+	return settlements
+}
+
+func (w *World) GetAdjacentUncompletedSettlements(x, y int) []*Settlement {
+
+	settlements := []*Settlement{}
+
+	for _, s := range w.GetAdjacentSettlements(x, y) {
+		if !s.completed {
+			settlements = append(settlements, s)
+		}
+	}
+
+	return settlements
 }
 
 func CreateLayers(sWidth, sHeight int) {

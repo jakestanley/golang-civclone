@@ -293,7 +293,7 @@ var (
 // 	completed settlement
 func IsTileSelectionValid(x, y int) bool {
 
-	if x < 0 || x < 0 {
+	if x < 0 {
 		return false
 	}
 
@@ -394,6 +394,7 @@ func UpdateDrawLocations() (int, int) {
 				// can use rect and Point::in for this I think
 				// I'd like to evaluate all this and find the one with the pointer closest to the center tbh as a long term solution
 
+				// TODO nearest tile center to mouse (on a branch but broken)
 				if mouse.In(tile.innerBounds) {
 
 					world.redraw = true
@@ -432,6 +433,39 @@ func FocusSettlement(x, y int) bool {
 	fmt.Println(fmt.Sprintf("Focused %d,%d", x, y))
 
 	return true
+}
+
+// WASD moves the cursor input. Currently the boundaries are hardcoded
+// 	TODO unhardcode these boundaries
+func WASD() {
+
+	// move cursor north
+	if inpututil.IsKeyJustPressed(ebiten.KeyW) {
+		if ctx > 0 {
+			ctx--
+		}
+	}
+	// move cursor south
+	if inpututil.IsKeyJustPressed(ebiten.KeyS) {
+		if ctx < 7 {
+			ctx++
+		}
+	}
+	// move cursor west
+	if inpututil.IsKeyJustPressed(ebiten.KeyA) {
+		if cty > 0 {
+			cty--
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyD) {
+		if cty < 7 {
+			cty++
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		fmt.Println("Thanks for playing")
+		os.Exit(0)
+	}
 }
 
 // UpdateInputs calls appropriate functions when inputs detected
@@ -515,33 +549,8 @@ func UpdateInputs() {
 		DefocusSettlement()
 	}
 
-	// move cursor north
-	if inpututil.IsKeyJustPressed(ebiten.KeyW) {
-		if ctx > 0 {
-			ctx--
-		}
-	}
-	// move cursor south
-	if inpututil.IsKeyJustPressed(ebiten.KeyS) {
-		if ctx < 7 {
-			ctx++
-		}
-	}
-	// move cursor west
-	if inpututil.IsKeyJustPressed(ebiten.KeyA) {
-		if cty > 0 {
-			cty--
-		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyD) {
-		if cty < 7 {
-			cty++
-		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		fmt.Println("Thanks for playing")
-		os.Exit(0)
-	}
+	// update keyboard cursor position
+	WASD()
 
 	// TODO ignore tile hover/click if blocked by a UI
 

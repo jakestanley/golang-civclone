@@ -90,6 +90,15 @@ type Button struct {
 }
 
 // Tiles
+type Tile struct {
+	// cache
+	tx       float64
+	ty       float64
+	opsFlat  *ebiten.DrawImageOptions
+	opsWest  *ebiten.DrawImageOptions
+	opsSouth *ebiten.DrawImageOptions
+}
+
 type Square struct {
 	kind        int
 	building    int
@@ -100,12 +109,7 @@ type Square struct {
 	hovered     bool
 	highlighted bool
 	settlement  *Settlement
-	// cache
-	tx       float64
-	ty       float64
-	opsFlat  *ebiten.DrawImageOptions
-	opsWest  *ebiten.DrawImageOptions
-	opsSouth *ebiten.DrawImageOptions
+	tile        *Tile
 }
 
 // HasCompletedSettlement returns true if this square has a settlement that
@@ -340,11 +344,12 @@ func UpdateDrawLocations() (int, int) {
 	for x := 0; x < len(world.squares); x++ {
 		for y := 0; y < len(world.squares[x]); y++ {
 
-			tile := &world.squares[x][y]
+			square := &world.squares[x][y]
+			tile := square.tile
 			tx := tile.tx
 			ty := tile.ty
 
-			if tile.moved {
+			if square.moved {
 
 				// TODO use tile width vars or consts
 				// tx and ty are where the tile will be drawn from
@@ -352,7 +357,7 @@ func UpdateDrawLocations() (int, int) {
 				// Recalculating tile position on screen
 				tx = float64(xOffset) + float64(y*32) + float64(x*32)
 				ty = float64(yOffset) - float64(16*y) + float64(x*16)
-				ty = ty - float64(tile.height)
+				ty = ty - float64(square.height)
 
 				// update dem positions
 				tile.tx = tx
@@ -651,9 +656,10 @@ func GetT(g *ebiten.GeoM) (float64, float64) {
 // 	although tiles do need the context of surrounding tiles provided by world
 func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype string, x, y int, highlighted bool) {
 
-	tile := &world.squares[x][y]
+	square := &world.squares[x][y]
+	tile := square.tile
 
-	if tile.moved || tile.hovered {
+	if square.moved || square.hovered {
 
 		const extraTileHeight = 16
 
@@ -662,11 +668,11 @@ func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype st
 
 		geomWest := &ebiten.GeoM{}
 		// order is important. scale _then_ translate
-		geomWest.Scale(1, float64(tile.height+extraTileHeight))
+		geomWest.Scale(1, float64(square.height+extraTileHeight))
 		geomWest.Translate(tile.tx, tile.ty+16) // magic number
 
 		geomSouth := &ebiten.GeoM{}
-		geomSouth.Scale(1, float64(tile.height+extraTileHeight)) // TODO something else so it goes _below_ the neighbouring tiles if applicable
+		geomSouth.Scale(1, float64(square.height+extraTileHeight)) // TODO something else so it goes _below_ the neighbouring tiles if applicable
 		geomSouth.Translate(tile.tx+30, tile.ty+16)
 
 		opsFlat := &ebiten.DrawImageOptions{
@@ -686,7 +692,7 @@ func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype st
 		tile.opsFlat = opsFlat
 		tile.opsWest = opsWest
 		tile.opsSouth = opsSouth
-	} else if !tile.hovered {
+	} else if !square.hovered {
 		tile.opsFlat.ColorM.Reset()
 		tile.opsWest.ColorM.Reset()
 		tile.opsSouth.ColorM.Reset()
@@ -781,7 +787,7 @@ func DrawThings(layer *ebiten.Image) {
 
 				var frame *ebiten.Image
 				ops := &ebiten.DrawImageOptions{}
-				ops.GeoM.Translate(world.squares[x][y].tx, world.squares[x][y].ty)
+				ops.GeoM.Translate(world.squares[x][y].tile.tx, world.squares[x][y].tile.ty)
 
 				// TODO i broke !s.HasCompletedSettlement() scaling
 				if !s.HasCompletedSettlement() {
@@ -806,15 +812,16 @@ func DrawHighlightLayer(layer *ebiten.Image) {
 	// TODO redraw property
 	for x := 0; x < len(world.squares); x++ {
 		for y := len(world.squares[x]) - 1; y > -1; y-- {
-			tile := &world.squares[x][y]
-			if tile.highlighted {
+			square := &world.squares[x][y]
+			tile := square.tile
+			if square.highlighted {
 
 				geom := Copy(&tile.opsFlat.GeoM)
 				ops := &ebiten.DrawImageOptions{
 					GeoM: geom,
 				}
 
-				if tile.selected {
+				if square.selected {
 					// orange
 					const div = 255
 					r, g, b := float64(255), float64(191), float64(0)
@@ -1307,6 +1314,7 @@ func CreateTile(kind int, height int, liquid bool) Square {
 		height:      height,
 		liquid:      liquid,
 		highlighted: false,
+		tile:        &Tile{},
 	}
 }
 

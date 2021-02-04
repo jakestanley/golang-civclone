@@ -1082,6 +1082,17 @@ func DrawUi(layer *ebiten.Image) {
 	// newer messages should be at the bottom of the screen and older messages should fade
 	messages.DrawMessages(layer, 300, 16)
 
+	// draw icons
+	resourceUi := ebiten.NewImage(200, 200)
+	ops := &ebiten.DrawImageOptions{}
+	for _, v := range icons {
+		resourceUi.DrawImage(v, ops)
+		ops.GeoM.Translate(0, 20)
+	}
+	ops = &ebiten.DrawImageOptions{}
+	ops.GeoM.Translate(400, 200)
+	layer.DrawImage(resourceUi, ops)
+
 }
 
 func HighlightAvailableTiles(x, y int, highlighted bool) {
@@ -1632,6 +1643,8 @@ func defs() {
 	nothing = Settlement{
 		kind: settlementKinds["NOTHING"],
 	}
+
+	LoadIcons()
 
 	tileSprites = make(map[string]TileSprite)
 	tileSprites["grass"] = LoadTileSprite(filepath.Join("img", "tiles", "grass"))

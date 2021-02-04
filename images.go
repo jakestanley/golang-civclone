@@ -2,12 +2,22 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"log"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten"
 	"github.com/hajimehoshi/ebiten/ebitenutil"
 )
+
+var icons []*ebiten.Image
+
+const IconsUranium = 0
+const IconsOil = 1
+const IconsFood = 2
+const IconsMedicine = 3
+const IconsWood = 4
+const IconsStone = 5
 
 func LoadTileSprite(path string) TileSprite {
 	flat, _, err := ebitenutil.NewImageFromFile(filepath.Join(path, "flat.png"))
@@ -36,6 +46,30 @@ func LoadTileSprite(path string) TileSprite {
 		westMid:  westMid,
 		south:    south,
 		southMid: southMid,
+	}
+}
+
+func LoadIcons() {
+
+	iconSize := 16
+
+	img, _, err := ebitenutil.NewImageFromFile(filepath.Join("img", "icons", "resources.png"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	icons = []*ebiten.Image{}
+	count := img.Bounds().Dx() / iconSize
+	for i := 0; i < count; i++ {
+		min := image.Point{
+			X: i * iconSize,
+			Y: 0,
+		}
+		max := image.Point{
+			X: i*iconSize + 15,
+			Y: iconSize,
+		}
+		icons = append(icons, ebiten.NewImageFromImage(img.SubImage(image.Rectangle{Min: min, Max: max})))
 	}
 }
 

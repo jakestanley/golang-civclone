@@ -91,12 +91,12 @@ type Button struct {
 
 // Tiles
 type Tile struct {
-	// cache
-	tx       float64
-	ty       float64
-	opsFlat  *ebiten.DrawImageOptions
-	opsWest  *ebiten.DrawImageOptions
-	opsSouth *ebiten.DrawImageOptions
+	innerBounds image.Rectangle
+	tx          float64
+	ty          float64
+	opsFlat     *ebiten.DrawImageOptions
+	opsWest     *ebiten.DrawImageOptions
+	opsSouth    *ebiten.DrawImageOptions
 }
 
 type Square struct {
@@ -327,7 +327,7 @@ func ResetFrameState() {
 }
 
 // UpdateDrawLocations is kinda bridging the gap between the game world and
-// 	the render logic. Trying to separate these a bit
+// 	the render logic. Returns coordinates of square where the mouse is.
 func UpdateDrawLocations() (int, int) {
 
 	// north will be top left
@@ -336,9 +336,11 @@ func UpdateDrawLocations() (int, int) {
 
 	mouseX, mouseY := -1, -1
 
-	// mouse position must have been updated by now
-	mxf, myf := float64(mx), float64(my)
-	// TODO height offset for higher tiles
+	mouse := image.Point{
+		X: mx,
+		Y: my,
+	}
+
 	mouseFound := false
 
 	for x := 0; x < len(world.squares); x++ {
@@ -359,17 +361,31 @@ func UpdateDrawLocations() (int, int) {
 				ty = float64(yOffset) - float64(16*y) + float64(x*16)
 				ty = ty - float64(square.height)
 
+				// used for mouse finding
+				tile.innerBounds = image.Rectangle{
+					image.Point{
+						int(tx) + 16,
+						int(ty) + 8,
+					},
+					image.Point{
+						int(tx) + 48,
+						int(ty) + 24,
+					},
+				}
+
 				// update dem positions
 				tile.tx = tx
 				tile.ty = ty
 			}
 
 			if !mouseFound {
+
 				// this matches a box in the centre of the sprite. needs to actually fit the iso
 				// if you treat what the player sees as a rectangle, it won't work correctly
 				// can use rect and Point::in for this I think
 				// I'd like to evaluate all this and find the one with the pointer closest to the center tbh as a long term solution
-				if (tx+16 < mxf) && (mxf < tx+48) && (ty+8 < myf) && (myf < ty+24) {
+
+				if mouse.In(tile.innerBounds) {
 
 					world.redraw = true
 					mouseX, mouseY = x, y

@@ -276,16 +276,20 @@ var (
 	renderThingsLayer bool
 )
 
-// TODO this should return some kind of tile build status object, e.g has building, can build on, etc
-//  or perhaps adjacent tiles
-func IsTileSelectionValid() bool {
+// IsTileSelectionValid returns true if this or a neighbouring tile has a
+// 	completed settlement
+func IsTileSelectionValid(x, y int) bool {
+
+	if x < 0 || x < 0 {
+		return false
+	}
 
 	// TODO check this works for a non-square world
-	return world.squares[mtx][mty].HasCompletedSettlement() ||
-		(mtx > 0 && world.squares[mtx-1][mty].HasCompletedSettlement()) ||
-		(mty > 0 && world.squares[mtx][mty-1].HasCompletedSettlement()) ||
-		(mtx < len(world.squares)-1 && world.squares[mtx+1][mty].HasCompletedSettlement()) ||
-		(mtx < len(world.squares) && mty < len(world.squares[mtx])-1 && world.squares[mtx][mty+1].HasCompletedSettlement())
+	return world.squares[x][y].HasCompletedSettlement() ||
+		(x > 0 && world.squares[x-1][y].HasCompletedSettlement()) ||
+		(y > 0 && world.squares[x][y-1].HasCompletedSettlement()) ||
+		(x < len(world.squares)-1 && world.squares[x+1][y].HasCompletedSettlement()) ||
+		(x < len(world.squares) && y < len(world.squares[x])-1 && world.squares[x][y+1].HasCompletedSettlement())
 }
 
 // ResetFrameState is a handy function that will reset any variables that should not persist between updates
@@ -312,11 +316,13 @@ func ResetFrameState() {
 }
 
 // TODO rename to UpdateWorld or something
-func UpdateDrawLocations() {
+func UpdateDrawLocations() (int, int) {
 
 	// north will be top left
 	xOffset := 0
 	yOffset := 120
+
+	mouseX, mouseY := -1, -1
 
 	// mouse position must have been updated by now
 	mxf, myf := float64(mx), float64(my)
@@ -355,13 +361,14 @@ func UpdateDrawLocations() {
 
 					tile.hovered = true
 					world.redraw = true
-					mtx, mty = x, y
+					mouseX, mouseY = x, y
 					mouseFound = true
-					validMouseSelection = IsTileSelectionValid()
 				}
 			}
 		}
 	}
+
+	return mouseX, mouseY
 }
 
 func DefocusSettlement() {
@@ -588,8 +595,8 @@ func (g *Game) Update() error {
 	}
 
 	// this also finds which tile the mouse is on
-	UpdateDrawLocations()
-
+	mtx, mty = UpdateDrawLocations()
+	validMouseSelection = IsTileSelectionValid(mtx, mty)
 	UpdateInputs()
 
 	UpdateSettlementUi()

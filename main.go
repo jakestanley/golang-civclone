@@ -114,6 +114,7 @@ type Square struct {
 	highlighted bool
 	input       *Input
 	settlement  *Settlement
+	resource    *ResourceType
 	tile        *Tile
 	// Texture is an indicator as to which image to use to render the tile.
 	// 	When loading a renderer, you will need to provide tile resources,
@@ -125,15 +126,19 @@ type Square struct {
 // HasCompletedSettlement returns true if this square has a settlement that
 // 	has completed construction
 func (s *Square) HasCompletedSettlement() bool {
-	if s.IsEmpty() {
+	if s.settlement == nil {
 		return false
 	}
 
 	return s.settlement.completed
 }
 
+func (s *Square) HasResource() bool {
+	return s.resource != nil
+}
+
 func (s *Square) IsEmpty() bool {
-	return s.settlement == nil
+	return s.settlement == nil && s.resource == nil
 }
 
 // TODO TileType struct?
@@ -165,6 +170,10 @@ type SettlementKind struct {
 	animation Animation
 	nothing   bool
 	popcap    int
+}
+
+type ResourceType struct {
+	animation Animation
 }
 
 type Settlement struct {
@@ -221,14 +230,18 @@ const (
 	// BtnEndTurn is the button map key for ending a turn
 	BtnEndTurn       = "END_TURN"
 	BtnShowBuildings = "SHOW_BUILDINGS"
+	// resource type refs
+	rtForest = "forest"
 )
 
 var (
 
 	// constant vars (they're vars but we treat them as constants. see defs())
 	settlementKinds map[string]*SettlementKind
-	nothing         Settlement
-	epochs          = []string{
+	resourcesTypes  map[string]*ResourceType
+
+	nothing Settlement
+	epochs  = []string{
 		"Neolithic Age", "Roman Age", "Classical Age",
 		"Age of Steam", "Modern Age", "Transhuman Age",
 		"Apocalyptic Age",
@@ -515,7 +528,7 @@ func UpdateInputs() {
 			if clickedSquare.IsEmpty() {
 				// TODO instead spawn the buildings UI
 				world.squares[mtx][mty].settlement = world.CreateSettlement(settlementKinds["VILLAGE"], mtx, mty)
-			} else if !clickedSquare.settlement.completed {
+			} else if !clickedSquare.HasCompletedSettlement() {
 				DefocusSettlement() // TODO change to defocus selection? idk
 			} else {
 				DefocusSettlement()
@@ -766,6 +779,10 @@ func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype st
 	}
 
 	layer.DrawImage(tileSprites[ttype].flat, tile.opsFlat)
+
+	if square.resource != nil {
+		layer.DrawImage(square.resource.animation.sprites[0], tile.opsFlat)
+	}
 	// TODO add TGrass property to tile. should be able to loop through tile types
 }
 
@@ -783,13 +800,13 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 		for x := 0; x < len(world.squares); x++ {
 			for y := len(world.squares[x]) - 1; y > -1; y-- {
 
-				tile := &world.squares[x][y]
+				square := &world.squares[x][y]
 
 				var ttype string
 				colour := &ebiten.ColorM{}
 
 				// tile type specific shading
-				if tile.kind == TWater {
+				if square.kind == TWater {
 
 					ttype = "water"
 
@@ -797,12 +814,12 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 						colour.Scale(0.6, 1, 0.6, 1)
 					}
 
-				} else if tile.kind == TGrass {
+				} else if square.kind == TGrass {
 
 					ttype = "grass"
 
 					// colour tile differently based on selection
-					if tile.input.hovered && (!settlementUi.focused || tile.highlighted) {
+					if square.input.hovered && (!settlementUi.focused || square.highlighted) {
 						if validMouseSelection {
 							colour.Scale(0.6, 1, 0.6, 1)
 						} else {
@@ -811,10 +828,10 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 					}
 				}
 
-				DrawTile(colour, world.cachedImg, world, ttype, x, y, tile.highlighted)
+				DrawTile(colour, world.cachedImg, world, ttype, x, y, square.highlighted)
 
 				// we're done with the tile move state. on to the next frame
-				tile.moved = false
+				square.moved = false
 			}
 		}
 	}
@@ -884,7 +901,9 @@ func DrawHighlightLayer(layer *ebiten.Image) {
 				layer.DrawImage(highlight, ops)
 
 				square := world.squares[x][y]
-				if !square.HasCompletedSettlement() {
+				if square.HasResource() {
+
+				} else if !square.HasCompletedSettlement() {
 					words := fmt.Sprintf("%.1f %%", square.settlement.progress*100)
 					// TODO show progress on next turn
 					width := text.BoundString(fontSmall, words).Dx()
@@ -1108,13 +1127,12 @@ func HighlightAvailableTiles(x, y int, highlighted bool) {
 
 	world.squares[x][y].input.selected = highlighted
 	for _, v := range works {
-		settlement := world.squares[v.x][v.y].settlement
-		tile := &world.squares[v.x][v.y]
+		square := &world.squares[v.x][v.y]
 
-		if settlement == nil {
+		if square.IsEmpty() {
 			continue
 		} else {
-			tile.highlighted = highlighted
+			square.highlighted = highlighted
 		}
 	}
 }
@@ -1396,6 +1414,18 @@ func CreateResearch() Research {
 	}
 }
 
+func CreateSquare() Square {
+	return Square{
+		moved:       true,
+		highlighted: false,
+		tile:        &Tile{},
+		input: &Input{
+			selected: false,
+			hovered:  false,
+		},
+	}
+}
+
 func CreateWorld() World {
 
 	w := World{
@@ -1618,6 +1648,7 @@ func LoadSprites() {
 func defs() {
 
 	settlementKinds = make(map[string]*SettlementKind)
+	resourcesTypes = make(map[string]*ResourceType)
 
 	settlementKinds["NOTHING"] = &SettlementKind{
 		nothing: true,
@@ -1638,6 +1669,10 @@ func defs() {
 		popcap:    20,
 		nothing:   false,
 		effort:    0.2,
+	}
+
+	resourcesTypes[rtForest] = &ResourceType{
+		animation: LoadAnimatedSprite(filepath.Join("img", "sprites", "resources"), "forest", 1),
 	}
 
 	nothing = Settlement{

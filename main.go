@@ -292,7 +292,8 @@ func IsTileSelectionValid(x, y int) bool {
 		(x < len(world.squares) && y < len(world.squares[x])-1 && world.squares[x][y+1].HasCompletedSettlement())
 }
 
-// ResetFrameState is a handy function that will reset any variables that should not persist between updates
+// ResetFrameState is a handy function that will reset any variables that
+// 	should not persist between updates, i.e mouse over, button hovers, etc
 func ResetFrameState() {
 	// remove any buttons marked for removal
 	for i := 0; i < len(AllButtons); i++ {
@@ -310,12 +311,19 @@ func ResetFrameState() {
 			}
 		}
 	}
+
+	// unhover any tiles
+	if validMouseSelection {
+		world.squares[mtx][mty].hovered = false
+	}
+
 	validMouseSelection = false
 	mtx = -1
 	mty = -1
 }
 
-// TODO rename to UpdateWorld or something
+// UpdateDrawLocations is kinda bridging the gap between the game world and
+// 	the render logic. Trying to separate these a bit
 func UpdateDrawLocations() (int, int) {
 
 	// north will be top left
@@ -351,7 +359,6 @@ func UpdateDrawLocations() (int, int) {
 				tile.ty = ty
 			}
 
-			tile.hovered = false
 			if !mouseFound {
 				// this matches a box in the centre of the sprite. needs to actually fit the iso
 				// if you treat what the player sees as a rectangle, it won't work correctly
@@ -359,7 +366,6 @@ func UpdateDrawLocations() (int, int) {
 				// I'd like to evaluate all this and find the one with the pointer closest to the center tbh as a long term solution
 				if (tx+16 < mxf) && (mxf < tx+48) && (ty+8 < myf) && (myf < ty+24) {
 
-					tile.hovered = true
 					world.redraw = true
 					mouseX, mouseY = x, y
 					mouseFound = true
@@ -597,6 +603,10 @@ func (g *Game) Update() error {
 	// this also finds which tile the mouse is on
 	mtx, mty = UpdateDrawLocations()
 	validMouseSelection = IsTileSelectionValid(mtx, mty)
+	if validMouseSelection {
+		world.squares[mtx][mty].hovered = true
+	}
+
 	UpdateInputs()
 
 	UpdateSettlementUi()

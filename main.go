@@ -99,17 +99,26 @@ type Tile struct {
 	opsSouth    *ebiten.DrawImageOptions
 }
 
+type Input struct {
+	selected bool
+	hovered  bool
+}
+
 type Square struct {
 	kind        int
 	building    int
-	selected    bool
 	moved       bool
 	height      int
 	liquid      bool
-	hovered     bool
 	highlighted bool
+	input       *Input
 	settlement  *Settlement
 	tile        *Tile
+	// Texture is an indicator as to which image to use to render the tile.
+	// 	When loading a renderer, you will need to provide tile resources,
+	// 	which should contain a string keyed map of whatever tile render type
+	// 	is used.
+	Texture string
 }
 
 // HasCompletedSettlement returns true if this square has a settlement that
@@ -318,7 +327,7 @@ func ResetFrameState() {
 
 	// unhover any tiles
 	if validMouseSelection {
-		world.squares[mtx][mty].hovered = false
+		world.squares[mtx][mty].input.hovered = false
 	}
 
 	validMouseSelection = false
@@ -485,6 +494,7 @@ func UpdateInputs() {
 		UpdateSettlementUi()
 	}
 
+	// left in for Kailynn's house
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 
 		if validMouseSelection && world.squares[mtx][mty].kind == TGrass {
@@ -625,7 +635,7 @@ func (g *Game) Update() error {
 	mtx, mty = UpdateDrawLocations()
 	validMouseSelection = IsTileSelectionValid(mtx, mty)
 	if validMouseSelection {
-		world.squares[mtx][mty].hovered = true
+		world.squares[mtx][mty].input.hovered = true
 	}
 
 	UpdateInputs()
@@ -675,7 +685,7 @@ func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype st
 	square := &world.squares[x][y]
 	tile := square.tile
 
-	if square.moved || square.hovered {
+	if square.moved || square.input.hovered {
 
 		const extraTileHeight = 16
 
@@ -708,7 +718,7 @@ func DrawTile(colour *ebiten.ColorM, layer *ebiten.Image, world *World, ttype st
 		tile.opsFlat = opsFlat
 		tile.opsWest = opsWest
 		tile.opsSouth = opsSouth
-	} else if !square.hovered {
+	} else if !square.input.hovered {
 		tile.opsFlat.ColorM.Reset()
 		tile.opsWest.ColorM.Reset()
 		tile.opsSouth.ColorM.Reset()
@@ -766,7 +776,7 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 					ttype = "grass"
 
 					// colour tile differently based on selection
-					if tile.hovered && (!settlementUi.focused || tile.highlighted) {
+					if tile.input.hovered && (!settlementUi.focused || tile.highlighted) {
 						if validMouseSelection {
 							colour.Scale(0.6, 1, 0.6, 1)
 						} else {
@@ -837,7 +847,7 @@ func DrawHighlightLayer(layer *ebiten.Image) {
 					GeoM: geom,
 				}
 
-				if square.selected {
+				if square.input.selected {
 					// orange
 					const div = 255
 					r, g, b := float64(255), float64(191), float64(0)
@@ -1055,7 +1065,7 @@ func HighlightAvailableTiles(x, y int, highlighted bool) {
 	works["south"] = &Work{x: x + 1, y: y}
 	works["west"] = &Work{x: x, y: y - 1}
 
-	world.squares[x][y].selected = highlighted
+	world.squares[x][y].input.selected = highlighted
 	for _, v := range works {
 		settlement := world.squares[v.x][v.y].settlement
 		tile := &world.squares[v.x][v.y]
@@ -1324,13 +1334,16 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 func CreateTile(kind int, height int, liquid bool) Square {
 	return Square{
 		kind:        kind,
-		selected:    false,
-		hovered:     false,
 		moved:       true,
 		height:      height,
 		liquid:      liquid,
 		highlighted: false,
 		tile:        &Tile{},
+		input: &Input{
+			selected: false,
+			hovered:  false,
+		},
+		// Texture: ,
 	}
 }
 

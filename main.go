@@ -619,6 +619,7 @@ func HandleTurnEnd() {
 			}
 		}
 
+		// TODO priority building
 		fmt.Println(fmt.Sprintf("Spare effort: %f", effort))
 		settlements := world.GetAdjacentUncompletedSettlements(s.worldX, s.worldY)
 		count := len(settlements)
@@ -1079,7 +1080,7 @@ func DrawUi(layer *ebiten.Image) {
 		v.DrawButton(layer)
 	}
 	// newer messages should be at the bottom of the screen and older messages should fade
-	messages.DrawMessages(layer)
+	messages.DrawMessages(layer, 300, 16)
 
 }
 

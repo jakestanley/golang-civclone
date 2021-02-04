@@ -26,6 +26,7 @@ type MessageQueue struct {
 	max    int
 	redraw bool
 	canvas *ebiten.Image
+	op     *ebiten.DrawImageOptions
 }
 
 func CreateMessages() MessageQueue {
@@ -60,29 +61,34 @@ func (m *MessageQueue) AddMessage(content string) {
 	m.redraw = true
 }
 
-func (m *MessageQueue) DrawMessages(screen *ebiten.Image) {
-
-	x := 300
-	y := 0
+func (m *MessageQueue) DrawMessages(layer *ebiten.Image, x, y int) {
 
 	if m.redraw || m.canvas == nil {
 
-		canvas := ebiten.NewImage(600, 100)
+		canvas := ebiten.NewImage(300, 100)
 
 		for i := 0; i < len(messages.queue); i++ {
 			// TODO calculate longest string, justify each message and translate
 			// 	the canvas accordingly (instead of using static coordinates)
-			text.Draw(canvas, messages.queue[len(messages.queue)-1-i].ToString(), fontDetail, 20, 20, color.White)
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(float64(x), float64(y+(i*14)))
+			cy := 0 + (i * 14)
+			msg := messages.queue[len(messages.queue)-1-i].ToString()
+			bounds := text.BoundString(fontDetail, msg)
+			textImg := ebiten.NewImage(bounds.Dx(), bounds.Dy()+16)
+			text.Draw(textImg, msg, fontDetail, 0, bounds.Dy(), color.White)
+			textImgOps := &ebiten.DrawImageOptions{}
 			alpha := 1 - (0.3 * float64(i))
-			op.ColorM.Scale(1, 1, 1, alpha)
-			screen.DrawImage(canvas, op)
+			textImgOps.ColorM.Scale(1, 1, 1, alpha)
+			// TODO make it so we can draw bottom to top also via a bool or something
+			// 	and/or justify right to left
+			textImgOps.GeoM.Translate(0, float64(cy))
+			canvas.DrawImage(textImg, textImgOps)
 		}
 
 		m.canvas = canvas
 	}
 
 	m.redraw = false
-	screen.DrawImage(m.canvas, &ebiten.DrawImageOptions{})
+	ops := &ebiten.DrawImageOptions{}
+	ops.GeoM.Translate(float64(x), float64(y))
+	layer.DrawImage(m.canvas, ops)
 }

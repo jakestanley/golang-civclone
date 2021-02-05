@@ -23,12 +23,13 @@ import (
 type Game struct{}
 
 type Citizen struct {
-	name      string
-	age       int
-	gender    string
-	education int
-	genetics  int
-	assigned  bool
+	name          string
+	age           int
+	gender        string
+	education     int
+	genetics      int
+	assignment    *image.Point
+	proficiencies map[string]float64
 	// TODO home settlement, tile on last turn
 	// home settlement could provide a buff to effort
 }
@@ -172,7 +173,12 @@ type SettlementKind struct {
 	popcap    int
 }
 
+type Stocks struct {
+	wood float64
+}
+
 type ResourceType struct {
+	name      string
 	animation Animation
 }
 
@@ -185,6 +191,7 @@ type Settlement struct {
 	citizens       []Citizen
 }
 
+// TODO remove as for now Point does this well enough
 type Work struct {
 	x, y int
 }
@@ -271,6 +278,7 @@ var (
 	ticks     int = 0
 	year      int = 1
 	epoch     int = 0
+	stocks    Stocks
 	world     World
 	research  Research
 	north     *ebiten.Image
@@ -519,8 +527,11 @@ func UpdateInputs() {
 
 		HandleButtonClicks()
 
+		// TODO some kind of mode, i.e settlement management mode, rather than "UI focused".
+		// 	need some decoupling here
 		if settlementUi.focused && validMouseSelection && settlementUi.selectedCtz != nil && world.squares[mtx][mty].highlighted {
-			fmt.Println(fmt.Sprintf("Assigned citizen %s to %s", settlementUi.selectedCtz.name, world.squares[mtx][mty].kind))
+			// TODO if can assign to
+			settlementUi.selectedCtz.AssignTo(&image.Point{X: mtx, Y: mty})
 		} else if validMouseSelection && world.squares[mtx][mty].kind == TGrass {
 
 			clickedSquare := world.squares[mtx][mty]
@@ -625,10 +636,12 @@ func HandleTurnEnd() {
 
 		effort := 0.0
 		for i := 0; i < len(s.citizens); i++ {
-			if !s.citizens[i].assigned {
+			if !s.citizens[i].Assigned() {
 				// if citizens aren't assigned, use their unused effort on
 				// 	eligible constructions
 				effort += s.citizens[i].CalculateEffort()
+			} else {
+				s.citizens[i].Work()
 			}
 		}
 
@@ -938,7 +951,32 @@ func (c *Citizen) ToTerseString() string {
 	return fmt.Sprintf("Citizen, %c%d", strings.ToUpper(c.gender)[0], c.age)
 }
 
+func (c *Citizen) Assigned() bool {
+	return c.assignment != nil
+}
+
+func (c *Citizen) AssignTo(location *image.Point) {
+	// TODO validate assignment
+	c.assignment = location
+	resource := world.squares[location.X][location.Y].resource
+	fmt.Println(fmt.Sprintf("Assigned citizen %s to %s", settlementUi.selectedCtz.name, resource.name))
+}
+
+func (c *Citizen) Work() {
+	resource := world.squares[c.assignment.X][c.assignment.Y].resource
+	// TODO morale bonus?
+	if resource.name == "wood cutting" {
+		stocks.wood += c.CalculateEffort()
+	}
+
+	c.proficiencies[resource.name] += 0.1
+	fmt.Println(fmt.Sprintf("%s's %s proficiency increased to %d", c.name, resource.name, c.proficiencies[resource.name]))
+}
+
+// TODO task type
+// 	or resource type?
 func (c *Citizen) CalculateEffort() float64 {
+	// TODO get citizen proficiency
 	return 0.1
 }
 
@@ -1102,12 +1140,13 @@ func DrawUi(layer *ebiten.Image) {
 	messages.DrawMessages(layer, 300, 16)
 
 	// draw icons
+	textY := 12
 	resourceUi := ebiten.NewImage(200, 200)
 	ops := &ebiten.DrawImageOptions{}
-	for _, v := range icons {
-		resourceUi.DrawImage(v, ops)
-		ops.GeoM.Translate(0, 20)
-	}
+
+	resourceUi.DrawImage(icons[IconsWood], ops)
+	text.Draw(resourceUi, fmt.Sprintf("%f", stocks.wood), fontDetail, 20, textY, color.White)
+
 	ops = &ebiten.DrawImageOptions{}
 	ops.GeoM.Translate(400, 200)
 	layer.DrawImage(resourceUi, ops)
@@ -1461,6 +1500,15 @@ func (w *World) CreateSettlement(kind *SettlementKind, worldX, worldY int) *Sett
 	return s
 }
 
+func CreateProficiencies() map[string]float64 {
+
+	p := make(map[string]float64)
+	for _, v := range resourcesTypes {
+		p[v.name] = 0.0
+	}
+	return p
+}
+
 func CreateSpawnSettlement(worldX, worldY int) *Settlement {
 
 	sk := settlementKinds["VILLAGE"]
@@ -1481,11 +1529,11 @@ func CreateSpawnSettlement(worldX, worldY int) *Settlement {
 		}
 
 		c = append(c, Citizen{
-			name:     name,
-			gender:   gender,
-			genetics: 100,
-			age:      18,
-			assigned: false,
+			name:          name,
+			gender:        gender,
+			genetics:      100,
+			age:           18,
+			proficiencies: CreateProficiencies(),
 		})
 	}
 
@@ -1672,6 +1720,7 @@ func defs() {
 	}
 
 	resourcesTypes[rtForest] = &ResourceType{
+		name:      "wood cutting",
 		animation: LoadAnimatedSprite(filepath.Join("img", "sprites", "resources"), "forest", 1),
 	}
 
@@ -1694,6 +1743,9 @@ func Init() {
 	CreateUi()
 
 	// new game
+	stocks = Stocks{
+		wood: 0,
+	}
 	world = CreateWorld()
 	research = CreateResearch()
 }

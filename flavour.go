@@ -20,6 +20,12 @@ var (
 		"Daisy",
 		"Lydia",
 	}
+	// Epochs
+	Epochs = []string{
+		"Neolithic Age", "Roman Age", "Classical Age",
+		"Age of Steam", "Modern Age", "Transhuman Age",
+		"Apocalyptic Age",
+	}
 
 	// Maybe children should be Name the Second (depending on gender)?
 	// That'd be cool and would mean I don't have to have as much variety, wew

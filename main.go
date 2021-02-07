@@ -247,12 +247,7 @@ var (
 	settlementKinds map[string]*SettlementKind
 	resourcesTypes  map[string]*ResourceType
 
-	nothing Settlement
-	epochs  = []string{
-		"Neolithic Age", "Roman Age", "Classical Age",
-		"Age of Steam", "Modern Age", "Transhuman Age",
-		"Apocalyptic Age",
-	}
+	nothing     Settlement
 	tileSprites map[string]TileSprite
 
 	// meta game state
@@ -313,9 +308,9 @@ var (
 	renderThingsLayer bool
 )
 
-// IsTileSelectionValid returns true if this or a neighbouring tile has a
+// CanInteractWithTile returns true if this or a neighbouring tile has a
 // 	completed settlement
-func IsTileSelectionValid(x, y int) bool {
+func CanInteractWithTile(x, y int) bool {
 
 	if x < 0 {
 		return false
@@ -327,6 +322,19 @@ func IsTileSelectionValid(x, y int) bool {
 		(y > 0 && world.squares[x][y-1].HasCompletedSettlement()) ||
 		(x < len(world.squares)-1 && world.squares[x+1][y].HasCompletedSettlement()) ||
 		(x < len(world.squares) && y < len(world.squares[x])-1 && world.squares[x][y+1].HasCompletedSettlement())
+}
+
+func TileIsInRange(x, y int) bool {
+
+	return image.Point{X: x, Y: y}.In(
+		image.Rectangle{
+			Min: image.Point{
+				X: 0, Y: 0,
+			},
+			Max: image.Point{
+				X: len(world.squares), Y: len(world.squares[0]),
+			},
+		})
 }
 
 // ResetFrameState is a handy function that will reset any variables that
@@ -350,7 +358,7 @@ func ResetFrameState() {
 	}
 
 	// unhover any tiles
-	if validMouseSelection {
+	if TileIsInRange(mtx, mty) {
 		world.squares[mtx][mty].input.hovered = false
 	}
 
@@ -625,9 +633,9 @@ func HandleTurnEnd() {
 	year++
 
 	// every ten years for now
-	if year%10 == 0 && epoch+1 < len(epochs) {
+	if year%10 == 0 && epoch+1 < len(Epochs) {
 		epoch++
-		messages.AddMessage(fmt.Sprintf("You advanced to the %s", epochs[epoch]))
+		messages.AddMessage(fmt.Sprintf("You advanced to the %s", Epochs[epoch]))
 	}
 
 	// iterate through constructions
@@ -685,8 +693,9 @@ func (g *Game) Update() error {
 
 	// this also finds which tile the mouse is on
 	mtx, mty = UpdateDrawLocations()
-	validMouseSelection = IsTileSelectionValid(mtx, mty)
-	if validMouseSelection {
+
+	validMouseSelection = CanInteractWithTile(mtx, mty)
+	if TileIsInRange(mtx, mty) {
 		world.squares[mtx][mty].input.hovered = true
 	}
 
@@ -832,7 +841,7 @@ func DrawWorld(layer *ebiten.Image, world *World) {
 					ttype = "grass"
 
 					// colour tile differently based on selection
-					if square.input.hovered && (!settlementUi.focused || square.highlighted) {
+					if square.input.hovered {
 						if validMouseSelection {
 							colour.Scale(0.6, 1, 0.6, 1)
 						} else {
@@ -1121,7 +1130,7 @@ func DrawUi(layer *ebiten.Image) {
 	layer.Clear()
 
 	// the font should totally upgrade with each age
-	text.Draw(layer, epochs[epoch], fontTitle, 8, 16, color.White)
+	text.Draw(layer, Epochs[epoch], fontTitle, 8, 16, color.White)
 
 	// smaller font for more detailed information
 	// TODO cache this value in update

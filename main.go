@@ -51,7 +51,8 @@ type Window struct {
 	// position
 	px, py float64
 	// has there been a change or has the window just spawned? if so, redraw
-	redraw bool
+	redraw  bool
+	buttons []*Button
 }
 
 // likely need to use embedding for dynamic UIs
@@ -324,6 +325,7 @@ func CanInteractWithTile(x, y int) bool {
 		(x < len(world.squares) && y < len(world.squares[x])-1 && world.squares[x][y+1].HasCompletedSettlement())
 }
 
+// TileIsInRange returns true if coordinates are valid map coordinates
 func TileIsInRange(x, y int) bool {
 
 	return image.Point{X: x, Y: y}.In(
@@ -1020,6 +1022,13 @@ func CreateButton(img *UiSprite, str string, x, y int) (*Button, int) {
 func (b *Button) SetWindow(window *Window) {
 	b.windowed = true
 	b.window = window
+	window.buttons = append(window.buttons, b)
+}
+
+func (w *Window) Destroy() {
+	for _, v := range w.buttons {
+		v.destroy = true
+	}
 }
 
 // SetRedraw instructs button and its window (if set) to redraw
@@ -1260,15 +1269,9 @@ func (ui *SettlementUi) DisableJobSelection(disabled bool) {
 func ClearSettlementUi() {
 	settlementUi.focused = false
 	settlementUi.selectedCtz = nil
-	// TODO may also need to do this in UpdateSettlementUi
-	for i := 0; i < len(settlementUi.selectCtzButtons); i++ {
-		settlementUi.selectCtzButtons[i].destroy = true
-	}
-	for i := 0; i < len(settlementUi.selectJobButtons); i++ {
-		settlementUi.selectJobButtons[i].destroy = true
-	}
 	settlementUi.selectCtzButtons = []*Button{}
 	settlementUi.selectJobButtons = []*Button{}
+	settlementUi.window.Destroy()
 	fmt.Println(fmt.Sprintf("Defocused"))
 }
 
